@@ -148,6 +148,8 @@ S2NRatio is local-first.
   page titles, or page contents.
 - CSV export is user-triggered from Settings.
 
+See [PRIVACY.md](PRIVACY.md) for the full privacy policy.
+
 ## Local Data Model
 
 Main storage keys:

@@ -2,6 +2,13 @@
 
 All notable local changes to S2NRatio are documented here.
 
+## 2026-05-22 - Chrome Web Store Prep
+
+### Changed
+
+- Added a public privacy policy for Chrome Web Store review.
+- Linked the privacy policy from the README.
+
 ## 2026-05-22 - On-Page Goal Popups
 
 ### Changed
