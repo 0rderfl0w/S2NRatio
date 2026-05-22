@@ -16,7 +16,7 @@ moving the work forward or leaking into distraction.
 - Supports permanent rules with `Remember always` and date-scoped rules with `Remember today`.
 - Shows a daily Website Signal Ratio in the extension popup.
 - Lets users edit minutes, flip Signal/Noise status, or split one site's time between both.
-- Provides configurable goals, status tiers, and goal-crossing effects.
+- Provides configurable goals, status tiers, and goal-crossing effects in the popup and active page.
 - Exports local tracking data to CSV from Settings.
 - Keeps tracking data local in Chrome storage.
 
@@ -109,8 +109,8 @@ percentages.
 
 Goal effects can also be enabled or disabled:
 
-- confetti when the daily website Signal ratio crosses up through the goal
-- a sad-face alert when the ratio drops back below the goal
+- confetti popup when the daily website Signal ratio crosses up through the goal
+- below-goal popup when the ratio drops back below the goal
 
 ### Settings
 

@@ -251,7 +251,7 @@ async function updateExistingActivityClassification(domain, newClassification) {
   delete activity.signalMs;
   delete activity.noiseMs;
   recalculateDailyTotals(daily);
-  await updateDailyData(todayKey, daily);
+  await updateDailyDataAndMaybeShowGoalEffect(todayKey, daily);
 }
 
 async function splitActivity({ domain } = {}) {
@@ -285,7 +285,7 @@ async function splitActivity({ domain } = {}) {
   }
 
   recalculateDailyTotals(daily);
-  await updateDailyData(todayKey, daily);
+  await updateDailyDataAndMaybeShowGoalEffect(todayKey, daily);
 
   return { updated: true, domain: normalized };
 }
@@ -326,7 +326,7 @@ async function updateActivitySegment({ domain, fromClassification, toClassificat
   }
 
   recalculateDailyTotals(daily);
-  await updateDailyData(todayKey, daily);
+  await updateDailyDataAndMaybeShowGoalEffect(todayKey, daily);
 
   return { updated: true, domain: normalized };
 }
@@ -363,7 +363,7 @@ async function updateActivityDuration({ domain, classification, durationMs } = {
   }
 
   recalculateDailyTotals(daily);
-  await updateDailyData(todayKey, daily);
+  await updateDailyDataAndMaybeShowGoalEffect(todayKey, daily);
 
   return { updated: true, domain: normalized };
 }
@@ -404,6 +404,109 @@ function recalculateDailyTotals(daily) {
     } else {
       daily.totalNoiseMs += activity.durationMs || 0;
     }
+  }
+}
+
+async function updateDailyDataAndMaybeShowGoalEffect(todayKey, daily) {
+  await updateDailyData(todayKey, daily);
+  await maybeShowGoalCrossingPopup(todayKey, daily);
+}
+
+async function maybeShowLiveGoalCrossingPopup(settings = null) {
+  const resolvedSettings = settings || await getSettings();
+  const todayKey = getTodayKey(resolvedSettings.dayStartHour);
+  const daily = await getDailyData(todayKey);
+  const current = await getCurrentSession();
+  await maybeShowGoalCrossingPopup(todayKey, addLiveSessionToDailyData(daily, current), resolvedSettings);
+}
+
+async function maybeShowGoalCrossingPopup(todayKey, daily, settings = null) {
+  const resolvedSettings = settings || await getSettings();
+  const target = clampPercent(Number(resolvedSettings.targetSignalRatio || 70), 70);
+  const totals = calculateWebsiteTotals(daily);
+  const total = totals.signalMs + totals.noiseMs;
+  const ratio = total > 0 ? Math.round((totals.signalMs / total) * 100) : 0;
+  const atGoal = total > 0 && ratio >= target;
+  const stateKey = `${todayKey}:${target}`;
+  const result = await chrome.storage.local.get(['goalEffectState']);
+  const goalEffectState = result.goalEffectState || {};
+  const previous = goalEffectState[stateKey];
+
+  if (previous === undefined || total <= 0) {
+    goalEffectState[stateKey] = atGoal;
+    await chrome.storage.local.set({ goalEffectState });
+    return;
+  }
+
+  let effectType = null;
+  if (!previous && atGoal && resolvedSettings.goalCelebrationEnabled !== false) {
+    effectType = 'celebrate';
+  } else if (previous && !atGoal && resolvedSettings.goalDropAlertEnabled !== false) {
+    effectType = 'drop';
+  }
+
+  if (previous !== atGoal) {
+    goalEffectState[stateKey] = atGoal;
+    await chrome.storage.local.set({ goalEffectState });
+  }
+
+  if (effectType) {
+    await showGoalEffectOnActiveTab(effectType, { ratio, target });
+  }
+}
+
+function calculateWebsiteTotals(daily = {}) {
+  const totals = { signalMs: 0, noiseMs: 0 };
+
+  for (const [domain, activity] of Object.entries(daily.activities || {})) {
+    if (domain === OFF_WEB_KEY) continue;
+
+    if (isSplitActivity(activity)) {
+      totals.signalMs += activity.signalMs || 0;
+      totals.noiseMs += activity.noiseMs || 0;
+    } else if (activity.classification === 'noise') {
+      totals.noiseMs += activity.durationMs || 0;
+    } else {
+      totals.signalMs += activity.durationMs || 0;
+    }
+  }
+
+  return totals;
+}
+
+function clampPercent(value, fallback = 0) {
+  const resolved = Number.isFinite(value) ? value : fallback;
+  return Math.min(100, Math.max(0, Math.round(resolved)));
+}
+
+async function showGoalEffectOnActiveTab(effectType, { ratio, target }) {
+  const tab = await getFocusedActiveTab();
+  if (!tab?.id) return;
+
+  try {
+    await chrome.tabs.sendMessage(tab.id, {
+      type: 'SHOW_GOAL_EFFECT',
+      payload: { effectType, ratio, target }
+    });
+  } catch (e) {
+    // Some pages cannot receive content-script messages, such as chrome:// pages.
+  }
+}
+
+async function clearGoalEffectStateForDate(dateKey) {
+  const result = await chrome.storage.local.get(['goalEffectState']);
+  const goalEffectState = result.goalEffectState || {};
+  let changed = false;
+
+  for (const key of Object.keys(goalEffectState)) {
+    if (key.startsWith(`${dateKey}:`)) {
+      delete goalEffectState[key];
+      changed = true;
+    }
+  }
+
+  if (changed) {
+    await chrome.storage.local.set({ goalEffectState });
   }
 }
 
@@ -771,7 +874,7 @@ async function addDurationToToday(domain, classification, durationMs) {
     daily.totalNoiseMs = (daily.totalNoiseMs || 0) + durationMs;
   }
 
-  await updateDailyData(todayKey, daily);
+  await updateDailyDataAndMaybeShowGoalEffect(todayKey, daily);
 }
 
 async function startOffWebSession() {
@@ -803,6 +906,7 @@ async function resetToday() {
   delete dailyData[todayKey];
   await chrome.storage.local.set({ dailyData });
   await clearTodaySiteRules(todayKey);
+  await clearGoalEffectStateForDate(todayKey);
 }
 
 async function toggleTracking(paused = null) {
@@ -907,6 +1011,7 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
     await enforceCurrentSessionActivity();
     const current = await getCurrentSession();
     if (current) {
+      await maybeShowLiveGoalCrossingPopup();
       await setCurrentSession({ ...current, lastHeartbeat: Date.now() });
     } else {
       await chrome.alarms.clear(HEARTBEAT_ALARM);

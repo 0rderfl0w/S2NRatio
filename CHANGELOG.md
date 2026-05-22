@@ -2,6 +2,16 @@
 
 All notable local changes to S2NRatio are documented here.
 
+## 2026-05-22 - On-Page Goal Popups
+
+### Changed
+
+- Added an active-page popup for the celebration effect when the website Signal ratio crosses above the daily goal.
+- Added an active-page popup for the opposite direction when the ratio drops back below the daily goal.
+- Reused the existing goal effect settings so users can still turn celebration and below-goal alerts on or off independently.
+- Added live-session goal crossing checks on heartbeat so long-running sessions can trigger effects without waiting for the extension popup to open.
+- Cleared today's goal effect state when today's data is reset.
+
 ## 2026-05-22 - Open Source v0.1 Prep
 
 ### Changed

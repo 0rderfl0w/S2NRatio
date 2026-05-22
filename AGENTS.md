@@ -20,7 +20,7 @@ S2NRatio is a lightweight Chrome extension that helps users understand and optim
 - **Daily Dashboard on Click**: Clicking the extension icon opens a popup showing:
   - Overall Signal-to-Noise ratio as a percentage (e.g., 72% Signal)
   - A customizable status bar with named ratio tiers (defaults: 80% "80/20", 90% "Jobs", 100% "Musk")
-  - Optional goal-crossing effects: confetti when crossing above the daily goal and a sad-face alert when dropping below it.
+  - Optional goal-crossing effects: confetti popup when crossing above the daily goal and a below-goal popup when dropping under it.
   - Breakdown lists:
     - **Signal**: "off the web" (3h 28m), Gmail (32m), Linear (1h 5m), etc.
     - **Noise**: YouTube (1h 11m), X (1h 8m), Reddit (45m), etc.
