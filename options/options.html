@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>S2NRatio Settings</title>
+  <style>
+    body { font-family: system-ui, -apple-system, sans-serif; background: #0f172a; color: #e2e8f0; padding: 24px; max-width: 700px; margin: 0 auto; }
+    h1 { color: #10b981; }
+    .section { background: #1e2937; padding: 20px; border-radius: 12px; margin-bottom: 24px; }
+    .rule { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #334155; }
+    button { background: #334155; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; }
+    button.danger { background: #ef4444; }
+    input, select { background: #0f172a; color: white; border: 1px solid #475569; padding: 8px; border-radius: 6px; }
+    .add-form { display: flex; gap: 8px; margin-top: 16px; }
+    .field { margin: 12px 0; display: grid; gap: 6px; }
+    .field label { font-weight: 700; }
+    .hint { color: #94a3b8; font-size: 13px; margin: 0; }
+    .status { color: #4ade80; font-size: 13px; min-height: 18px; margin-top: 10px; }
+    .tier-row { display: grid; grid-template-columns: 90px 1fr; gap: 8px; align-items: end; margin: 10px 0; }
+    .tier-row input { width: 100%; box-sizing: border-box; }
+    .support { color: #94a3b8; border: 1px solid #334155; background: #111827; }
+    .support h2 { color: #e2e8f0; margin-bottom: 8px; }
+    .support-copy { max-width: 520px; margin: 0 0 14px; line-height: 1.45; }
+    .coffee-link { display: inline-flex; align-items: center; justify-content: center; padding: 10px 14px; border-radius: 8px; background: #fbbf24; color: #111827; text-decoration: none; font-weight: 800; }
+    .coffee-link:hover { background: #f59e0b; }
+  </style>
+</head>
+<body>
+  <h1>S2NRatio Settings</h1>
+
+  <div class="section">
+    <h2>Tracking Settings</h2>
+    <div class="field">
+      <label for="dayStartHour">Day Start Hour</label>
+      <p class="hint">When does your tracking day begin?</p>
+      <select id="dayStartHour">
+        <option value="0">Midnight (00:00)</option>
+        <option value="4">4 AM</option>
+        <option value="6">6 AM</option>
+        <option value="8">8 AM</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="targetSignalRatio">Daily Signal Goal</label>
+      <p class="hint">Shown in the popup as your target ratio.</p>
+      <input type="number" id="targetSignalRatio" min="0" max="100" step="1">
+    </div>
+    <div class="field">
+      <label>
+        <input type="checkbox" id="requireActivityToTrack">
+        Require tab activity to count website time
+      </label>
+      <p class="hint">Stops counting a tab when it has not seen mouse, keyboard, scroll, or touch activity recently.</p>
+    </div>
+    <div class="field">
+      <label for="inactivityThresholdSeconds">Activity Timeout</label>
+      <p class="hint">Seconds of no activity before the active tab stops counting.</p>
+      <input type="number" id="inactivityThresholdSeconds" min="30" max="900" step="15">
+    </div>
+    <div class="field">
+      <label>
+        <input type="checkbox" id="showPopup">
+        Show quick classification prompt
+      </label>
+    </div>
+    <div class="field">
+      <label for="promptMode">Prompt Behavior</label>
+      <p class="hint">Choose when the bottom-right classifier appears for sites without a saved rule.</p>
+      <select id="promptMode">
+        <option value="always">Every new website</option>
+        <option value="noise">Only default Noise sites</option>
+      </select>
+    </div>
+    <button id="save-settings">Save</button>
+    <div id="settings-status" class="status"></div>
+  </div>
+
+  <div class="section">
+    <h2>Goal Effects</h2>
+    <div class="field">
+      <label>
+        <input type="checkbox" id="goalCelebrationEnabled">
+        Show confetti when the daily goal is reached
+      </label>
+    </div>
+    <div class="field">
+      <label>
+        <input type="checkbox" id="goalDropAlertEnabled">
+        Show sad-face alert when dropping below the daily goal
+      </label>
+    </div>
+    <button id="save-goal-effects-settings">Save Settings</button>
+  </div>
+
+  <div class="section">
+    <h2>Status Bar</h2>
+    <div class="field">
+      <label for="statusBarName">Status Bar Name</label>
+      <p class="hint">Shown above the popup progress bar.</p>
+      <input type="text" id="statusBarName" maxlength="32">
+    </div>
+    <div class="tier-row">
+      <div class="field">
+        <label for="statusTier1Goal">Goal %</label>
+        <input type="number" id="statusTier1Goal" min="0" max="100" step="1">
+      </div>
+      <div class="field">
+        <label for="statusTier1Label">Status Name</label>
+        <input type="text" id="statusTier1Label" maxlength="32">
+      </div>
+    </div>
+    <div class="tier-row">
+      <div class="field">
+        <label for="statusTier2Goal">Goal %</label>
+        <input type="number" id="statusTier2Goal" min="0" max="100" step="1">
+      </div>
+      <div class="field">
+        <label for="statusTier2Label">Status Name</label>
+        <input type="text" id="statusTier2Label" maxlength="32">
+      </div>
+    </div>
+    <div class="tier-row">
+      <div class="field">
+        <label for="statusTier3Goal">Goal %</label>
+        <input type="number" id="statusTier3Goal" min="0" max="100" step="1">
+      </div>
+      <div class="field">
+        <label for="statusTier3Label">Status Name</label>
+        <input type="text" id="statusTier3Label" maxlength="32">
+      </div>
+    </div>
+    <button id="save-status-settings">Save Settings</button>
+  </div>
+
+  <div class="section">
+    <h2>Custom Rules</h2>
+    <p>Override automatic classification for specific domains.</p>
+    <div id="rules-list"></div>
+    
+    <div class="add-form">
+      <input type="text" id="new-domain" placeholder="example.com">
+      <select id="new-classification">
+        <option value="signal">Signal</option>
+        <option value="noise">Noise</option>
+      </select>
+      <button id="add-rule">Add Rule</button>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Data Management</h2>
+    <button id="export-csv">Export CSV</button>
+    <button id="reset-today" class="danger">Reset Today's Data</button>
+    <button id="clear-all" class="danger">Clear All Data</button>
+  </div>
+
+  <div class="section support">
+    <h2>Support Open Source Devs ☕</h2>
+    <p class="support-copy">
+      S2NRatio is local-first, private, and free to use. If it helps you reclaim attention, a coffee keeps the project moving.
+    </p>
+    <a class="coffee-link" href="https://buymeacoffee.com/perspective" target="_blank" rel="noopener noreferrer">
+      Buy the creator a coffee
+    </a>
+  </div>
+
+  <script type="module" src="options.js"></script>
+</body>
+</html>
