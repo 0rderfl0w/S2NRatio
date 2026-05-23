@@ -2,18 +2,18 @@
 
 Effective date: May 22, 2026
 
-S2NRatio is a local-first Chrome extension for tracking Signal vs Noise browsing time.
+Signal to Noise Ratio is a local-first Chrome extension for tracking Signal vs Noise browsing time.
 
-## Data S2NRatio Stores
+## Data Signal to Noise Ratio Stores
 
-S2NRatio stores extension data locally in Chrome storage on your device:
+Signal to Noise Ratio stores extension data locally in Chrome storage on your device:
 
 - website domains, such as `example.com`
 - Signal or Noise classifications for domains
 - daily time totals by domain
 - extension settings, such as daily goal, prompt behavior, and status tiers
 
-S2NRatio does not store full URLs, page paths, query strings, page titles, page contents, form entries, keystroke contents, passwords, or payment details.
+Signal to Noise Ratio does not store full URLs, page paths, query strings, page titles, page contents, form entries, keystroke contents, passwords, or payment details.
 
 ## How Data Is Used
 
@@ -27,19 +27,27 @@ The extension uses local data to:
 
 ## Data Sharing
 
-S2NRatio does not sell, rent, transfer, or share your browsing data.
+Signal to Noise Ratio does not sell, rent, transfer, or share your browsing data.
 
-S2NRatio does not send tracking data to an external server. CSV export is user-triggered and stays under your control.
+Signal to Noise Ratio does not send tracking data to an external server. CSV export is user-triggered and stays under your control.
+
+## Limited Use
+
+Signal to Noise Ratio's use of information received from Chrome APIs adheres to the Chrome Web Store User Data Policy, including the Limited Use requirements.
+
+The extension uses web browsing activity only for its single user-facing purpose: tracking active browser time, classifying domains as Signal or Noise, and showing local reports to you.
+
+Signal to Noise Ratio does not transfer browsing activity to servers or third parties, does not use browsing activity for advertising, and does not allow human access to your browsing activity.
 
 ## Chrome Permissions
 
-S2NRatio requests:
+Signal to Noise Ratio requests:
 
 - `tabs` to detect the active tab and current domain
 - `storage` to save local settings, rules, and daily totals
 - `alarms` to run periodic tracking checkpoints
 - `idle` to stop website tracking when your computer is idle or locked
-- `<all_urls>` host access to run the local classifier prompt and activity listener on visited pages
+- `<all_urls>` content script access to run the local classifier prompt and activity listener on visited pages
 
 These permissions are used only for the extension's single purpose: helping you track active browser time as Signal or Noise.
 
@@ -47,7 +55,7 @@ These permissions are used only for the extension's single purpose: helping you 
 
 Daily tracking data is stored locally. You can reset today's tracking data from the extension Settings page.
 
-You can remove all extension data by uninstalling S2NRatio from Chrome or clearing the extension's site data through Chrome.
+You can remove all extension data by uninstalling Signal to Noise Ratio from Chrome or clearing the extension's site data through Chrome.
 
 ## Contact
 

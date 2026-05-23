@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>S2NRatio Settings</title>
+  <title>Signal to Noise Ratio Settings</title>
   <style>
     body { font-family: system-ui, -apple-system, sans-serif; background: #0f172a; color: #e2e8f0; padding: 24px; max-width: 700px; margin: 0 auto; }
     h1 { color: #10b981; }
@@ -18,6 +18,15 @@
     .status { color: #4ade80; font-size: 13px; min-height: 18px; margin-top: 10px; }
     .tier-row { display: grid; grid-template-columns: 90px 1fr; gap: 8px; align-items: end; margin: 10px 0; }
     .tier-row input { width: 100%; box-sizing: border-box; }
+    .day-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
+    .day-toggle { display: flex; align-items: center; justify-content: center; gap: 5px; min-height: 38px; border: 1px solid #334155; border-radius: 8px; background: #0f172a; font-size: 12px; font-weight: 800; }
+    .day-toggle input { margin: 0; }
+    .button-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .storage-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 12px 0; }
+    .storage-card { background: #111827; border: 1px solid #334155; border-radius: 8px; padding: 10px; }
+    .storage-label { color: #94a3b8; font-size: 10px; font-weight: 800; text-transform: uppercase; }
+    .storage-value { margin-top: 4px; font-size: 16px; font-weight: 900; }
+    .danger-zone { margin-top: 16px; padding-top: 16px; border-top: 1px solid #334155; }
     .support { color: #94a3b8; border: 1px solid #334155; background: #111827; }
     .support h2 { color: #e2e8f0; margin-bottom: 8px; }
     .support-copy { max-width: 520px; margin: 0 0 14px; line-height: 1.45; }
@@ -26,7 +35,7 @@
   </style>
 </head>
 <body>
-  <h1>S2NRatio Settings</h1>
+  <h1>Signal to Noise Ratio Settings</h1>
 
   <div class="section">
     <h2>Tracking Settings</h2>
@@ -64,6 +73,13 @@
       </label>
     </div>
     <div class="field">
+      <label>
+        <input type="checkbox" id="showRatioBadge">
+        Show ratio on extension icon
+      </label>
+      <p class="hint">Updates every 60 seconds. The badge color follows the current site's Signal or Noise label.</p>
+    </div>
+    <div class="field">
       <label for="promptMode">Prompt Behavior</label>
       <p class="hint">Choose when the bottom-right classifier appears for sites without a saved rule.</p>
       <select id="promptMode">
@@ -73,6 +89,29 @@
     </div>
     <button id="save-settings">Save</button>
     <div id="settings-status" class="status"></div>
+  </div>
+
+  <div class="section">
+    <h2>Weekly Average</h2>
+    <div class="field">
+      <label>Days That Count</label>
+      <p class="hint">Only checked days affect the 7-day average. Tracking data is still stored for every day.</p>
+      <div class="day-grid" id="weekly-days">
+        <label class="day-toggle"><input type="checkbox" id="weeklyDay1" value="1"> Mon</label>
+        <label class="day-toggle"><input type="checkbox" id="weeklyDay2" value="2"> Tue</label>
+        <label class="day-toggle"><input type="checkbox" id="weeklyDay3" value="3"> Wed</label>
+        <label class="day-toggle"><input type="checkbox" id="weeklyDay4" value="4"> Thu</label>
+        <label class="day-toggle"><input type="checkbox" id="weeklyDay5" value="5"> Fri</label>
+        <label class="day-toggle"><input type="checkbox" id="weeklyDay6" value="6"> Sat</label>
+        <label class="day-toggle"><input type="checkbox" id="weeklyDay0" value="0"> Sun</label>
+      </div>
+    </div>
+    <p class="hint" id="weekly-average-start">Using all stored history inside the 7-day window.</p>
+    <div class="button-row">
+      <button id="save-weekly-settings">Save Weekly Settings</button>
+      <button id="fresh-weekly-average">Start Average Fresh Today</button>
+      <button id="restore-weekly-average">Use Full 7-Day History</button>
+    </div>
   </div>
 
   <div class="section">
@@ -149,15 +188,39 @@
 
   <div class="section">
     <h2>Data Management</h2>
-    <button id="export-csv">Export CSV</button>
-    <button id="reset-today" class="danger">Reset Today's Data</button>
-    <button id="clear-all" class="danger">Clear All Data</button>
+    <div class="storage-grid">
+      <div class="storage-card">
+        <div class="storage-label">Stored Days</div>
+        <div class="storage-value" id="stored-days">-</div>
+      </div>
+      <div class="storage-card">
+        <div class="storage-label">Website Rows</div>
+        <div class="storage-value" id="stored-websites">-</div>
+      </div>
+      <div class="storage-card">
+        <div class="storage-label">Rules</div>
+        <div class="storage-value" id="stored-rules">-</div>
+      </div>
+      <div class="storage-card">
+        <div class="storage-label">Local Size</div>
+        <div class="storage-value" id="stored-size">-</div>
+      </div>
+    </div>
+    <div class="button-row">
+      <button id="export-csv">Export CSV</button>
+      <button id="reset-today" class="danger">Reset Today's Data</button>
+      <button id="clear-history" class="danger"><span aria-hidden="true">&#128465;</span> Clear Tracking History</button>
+    </div>
+    <div class="danger-zone">
+      <p class="hint">This deletes settings, rules, history, and session state.</p>
+      <button id="clear-all" class="danger">Delete Everything</button>
+    </div>
   </div>
 
   <div class="section support">
     <h2>Support Open Source Devs ☕</h2>
     <p class="support-copy">
-      S2NRatio is local-first, private, and free to use. If it helps you reclaim attention, a coffee keeps the project moving.
+      Signal to Noise Ratio is local-first, private, and free to use. If it helps you reclaim attention, a coffee keeps the project moving.
     </p>
     <a class="coffee-link" href="https://buymeacoffee.com/perspective" target="_blank" rel="noopener noreferrer">
       Buy the creator a coffee

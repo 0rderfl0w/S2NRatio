@@ -6,12 +6,13 @@ let goalEffectTimer = null;
 const DEFAULT_STATUS_BAR_NAME = 'Signal Status';
 const DEFAULT_STATUS_TIERS = [
   { goal: 100, label: 'Musk' },
-  { goal: 90, label: 'Jobs' },
-  { goal: 80, label: '80/20' }
+  { goal: 80, label: 'Jobs' },
+  { goal: 70, label: 'Goal' }
 ];
 const STATUS_LABEL_ALIASES = {
   'Elon Musk': 'Musk',
-  'Steve Jobs': 'Jobs'
+  'Steve Jobs': 'Jobs',
+  '80/20': 'Goal'
 };
 
 async function sendMessage(type, payload) {
@@ -122,11 +123,18 @@ function renderStatusLadder(ratio, settings) {
 
   goalTierEl.textContent = '';
   if (goalTier) {
-    goalTierEl.appendChild(createStatusMarker({ tier: goalTier, ratio, next, showGoal: true, placement: 'goal' }));
+    goalTierEl.appendChild(createStatusMarker({
+      tier: goalTier,
+      ratio,
+      next,
+      showGoal: true,
+      showName: true,
+      placement: 'goal'
+    }));
   }
 }
 
-function createStatusMarker({ tier, ratio, next, showGoal, placement }) {
+function createStatusMarker({ tier, ratio, next, showGoal, showName = !showGoal, placement }) {
   const marker = document.createElement('div');
   const tierPosition = clampNumber(tier.goal, 0, 100);
   const classes = ['status-marker', `status-marker-${placement}`];
@@ -151,11 +159,12 @@ function createStatusMarker({ tier, ratio, next, showGoal, placement }) {
 
   const label = document.createElement('span');
   label.className = 'status-marker-label';
+  if (showName) label.classList.add('with-name');
 
   const value = document.createElement('strong');
   value.textContent = `${tier.goal}%`;
 
-  if (showGoal) {
+  if (!showName) {
     label.appendChild(value);
   } else {
     const name = document.createElement('span');
@@ -201,6 +210,7 @@ function renderInsights({ data, activities, ratio, total, settings }) {
   const target = Number(settings.targetSignalRatio || 70);
   const goalEl = document.getElementById('goal-status');
   const topNoiseEl = document.getElementById('top-noise');
+  const weeklyAverageEl = document.getElementById('weekly-average');
   const sessionEl = document.getElementById('session-duration');
 
   if (!total) {
@@ -219,10 +229,23 @@ function renderInsights({ data, activities, ratio, total, settings }) {
 
   topNoiseEl.textContent = topNoise ? `${topNoise[0]} ${formatDuration(topNoise[1])}` : 'None yet';
 
+  const weeklyStats = data.weeklyStats || {};
+  if (weeklyStats.totalMs > 0) {
+    weeklyAverageEl.textContent = `${weeklyStats.ratio}%`;
+    const filteredDays = Array.isArray(weeklyStats.includedWeekdays) && weeklyStats.includedWeekdays.length < 7
+      ? `, ${weeklyStats.includedWeekdays.length} selected weekday${weeklyStats.includedWeekdays.length === 1 ? '' : 's'}`
+      : '';
+    const freshStart = weeklyStats.freshStartDate ? `, fresh since ${weeklyStats.freshStartDate}` : '';
+    weeklyAverageEl.title = `${weeklyStats.daysWithData || 0} tracked day${weeklyStats.daysWithData === 1 ? '' : 's'} in the last 7 days${filteredDays}${freshStart}`;
+  } else {
+    weeklyAverageEl.textContent = 'No data';
+    weeklyAverageEl.title = 'No tracked website time in the last 7 days';
+  }
+
   if (settings.trackingPaused) {
     sessionEl.textContent = 'Paused';
-  } else if (data.currentSession?.startTime) {
-    sessionEl.textContent = formatDurationPrecise(Date.now() - data.currentSession.startTime);
+  } else if (data.currentSession?.trackedElapsedMs > 0) {
+    sessionEl.textContent = formatDurationPrecise(data.currentSession.trackedElapsedMs);
   } else if (settings.requireActivityToTrack) {
     sessionEl.textContent = getEngagementLabel(data.engagement);
   } else {
@@ -430,7 +453,6 @@ function createActivityRow({ domain, classification, durationMs, canSplit, split
   edit.dataset.action = 'flip';
   edit.dataset.domain = domain;
   edit.dataset.classification = classification;
-  edit.dataset.wholeActivity = String(canSplit);
 
   actions.append(duration, edit);
 
@@ -496,6 +518,7 @@ function showEmpty() {
   document.getElementById('activity-list').textContent = '';
   document.getElementById('goal-status').textContent = '-';
   document.getElementById('top-noise').textContent = '-';
+  document.getElementById('weekly-average').textContent = '-';
   document.getElementById('session-duration').textContent = '-';
 }
 
@@ -540,19 +563,13 @@ async function markCurrentSite(type) {
   setTimeout(loadData, 300);
 }
 
-async function editActivityClassification(domain, currentClassification, wholeActivity) {
+async function editActivityClassification(domain, currentClassification) {
   const nextClassification = currentClassification === 'signal' ? 'noise' : 'signal';
-  const response = wholeActivity
-    ? await sendMessage('UPDATE_CLASSIFICATION', {
-      domain,
-      newClassification: nextClassification,
-      remember: true
-    })
-    : await sendMessage('UPDATE_ACTIVITY_SEGMENT', {
-      domain,
-      fromClassification: currentClassification,
-      toClassification: nextClassification
-    });
+  const response = await sendMessage('UPDATE_ACTIVITY_SEGMENT', {
+    domain,
+    fromClassification: currentClassification,
+    toClassification: nextClassification
+  });
 
   if (!response?.success || response.data?.updated === false) {
     alert('Could not update that website classification.');
@@ -628,8 +645,7 @@ function handleActivityListClick(event) {
   if (button.dataset.action === 'flip') {
     editActivityClassification(
       button.dataset.domain,
-      button.dataset.classification,
-      button.dataset.wholeActivity === 'true'
+      button.dataset.classification
     );
     return;
   }

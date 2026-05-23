@@ -1,7 +1,7 @@
 // background.js
 // S2NRatio v0.1 - Background Service Worker
 
-import { classifyDomain, extractDomain, normalizeDomain } from './utils/classification.js';
+import { classifyDomainWithRulePriority, extractDomain, normalizeDomain } from './utils/classification.js';
 import {
   getSettings,
   getDailyData,
@@ -19,11 +19,23 @@ import { getTodayKey } from './utils/time.js';
 
 const HEARTBEAT_ALARM = 's2nr-heartbeat';
 const MIDNIGHT_ALARM = 's2nr-midnight';
+const BADGE_ALARM = 's2nr-ratio-badge';
 const OFF_WEB_KEY = '__off_the_web__';
 const OFF_WEB_MIN_MS = 5000;
 const RETENTION_DAYS = 30;
 const MIN_INACTIVITY_SECONDS = 30;
 const MAX_INACTIVITY_SECONDS = 900;
+const SIGNAL_BADGE_COLOR = '#10b981';
+const NOISE_BADGE_COLOR = '#ef4444';
+const ENGAGEMENT_ACTIVITY_SOURCES = new Set([
+  'input',
+  'pointerdown',
+  'keydown',
+  'scroll',
+  'wheel',
+  'touchstart',
+  'mousemove'
+]);
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (sender.id !== chrome.runtime.id) {
@@ -94,6 +106,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           sendResponse({ success: true });
           break;
 
+        case 'CLEAR_TRACKING_HISTORY':
+          await clearTrackingHistory();
+          sendResponse({ success: true });
+          break;
+
+        case 'CLEAR_ALL_DATA':
+          await clearAllData();
+          sendResponse({ success: true });
+          break;
+
         case 'TOGGLE_TRACKING':
           sendResponse({
             success: true,
@@ -122,10 +144,15 @@ async function getDailyDataResponse() {
   const current = await getCurrentSession();
   const currentSite = await getActiveTabSite(current);
   const engagement = await getEngagementSnapshot(current, settings);
+  const liveDaily = await addLiveSessionToDailyData(daily, current, settings);
+  const responseSession = current
+    ? { ...current, trackedElapsedMs: await getSessionDurationMs(current, { settings }) }
+    : null;
 
   return {
-    ...addLiveSessionToDailyData(daily, current),
-    currentSession: current,
+    ...liveDaily,
+    weeklyStats: await getWeeklyStats(todayKey, liveDaily, settings),
+    currentSession: responseSession,
     currentSite,
     engagement,
     settings,
@@ -133,7 +160,7 @@ async function getDailyDataResponse() {
   };
 }
 
-function addLiveSessionToDailyData(daily, current) {
+async function addLiveSessionToDailyData(daily, current, settings = null) {
   const copy = {
     activities: Object.fromEntries(
       Object.entries(daily.activities || {}).map(([domain, activity]) => [domain, { ...activity }])
@@ -145,7 +172,7 @@ function addLiveSessionToDailyData(daily, current) {
 
   if (!current?.domain || !current.startTime) return copy;
 
-  const elapsedMs = Date.now() - current.startTime;
+  const elapsedMs = await getSessionDurationMs(current, { settings });
   if (elapsedMs < 1000) return copy;
 
   const domain = current.domain;
@@ -181,10 +208,14 @@ function addLiveSessionToDailyData(daily, current) {
 
 async function classifySite(payload = {}) {
   const settings = await getSettings();
-  const rules = await getEffectiveSiteRules(settings);
+  const todayKey = getTodayKey(settings.dayStartHour);
+  const [siteRules, todayRules] = await Promise.all([
+    getSiteRules(),
+    getTodaySiteRules(todayKey)
+  ]);
   const domain = extractDomain(payload.url || '');
-  const classification = classifyDomain(domain, rules);
-  const hasRule = hasSavedRule(domain, rules);
+  const classification = classifyEffectiveDomain(domain, siteRules, todayRules);
+  const hasRule = hasSavedRule(domain, todayRules) || hasSavedRule(domain, siteRules);
 
   return {
     domain,
@@ -229,6 +260,7 @@ async function handleClassificationUpdate({ domain, newClassification, remember 
   }
 
   await updateExistingActivityClassification(normalized, newClassification);
+  await updateActionBadge();
 
   return {
     updated: true,
@@ -286,6 +318,7 @@ async function splitActivity({ domain } = {}) {
 
   recalculateDailyTotals(daily);
   await updateDailyDataAndMaybeShowGoalEffect(todayKey, daily);
+  await updateActionBadge();
 
   return { updated: true, domain: normalized };
 }
@@ -305,6 +338,7 @@ async function updateActivitySegment({ domain, fromClassification, toClassificat
 
   if (!isSplitActivity(activity)) {
     await updateExistingActivityClassification(normalized, toClassification);
+    await updateActionBadge();
     return { updated: true, domain: normalized };
   }
 
@@ -327,6 +361,7 @@ async function updateActivitySegment({ domain, fromClassification, toClassificat
 
   recalculateDailyTotals(daily);
   await updateDailyDataAndMaybeShowGoalEffect(todayKey, daily);
+  await updateActionBadge();
 
   return { updated: true, domain: normalized };
 }
@@ -358,12 +393,14 @@ async function updateActivityDuration({ domain, classification, durationMs } = {
 
     activity.durationMs = getActivityDurationMs(activity);
     activity.classification = (activity.noiseMs || 0) > (activity.signalMs || 0) ? 'noise' : 'signal';
+    collapseSplitActivityIfOneSided(activity);
   } else {
     activity.durationMs = nextDurationMs;
   }
 
   recalculateDailyTotals(daily);
   await updateDailyDataAndMaybeShowGoalEffect(todayKey, daily);
+  await updateActionBadge();
 
   return { updated: true, domain: normalized };
 }
@@ -374,6 +411,8 @@ async function checkpointCurrentSessionForDomain(domain) {
   const session = await getCurrentSession();
   if (session?.domain !== domain) return;
 
+  await clearCurrentSession();
+  await stopHeartbeat();
   await endSession(session);
   await setCurrentSession({ ...session, startTime: Date.now() });
 }
@@ -388,6 +427,16 @@ function getActivityDurationMs(activity) {
   }
 
   return activity?.durationMs || 0;
+}
+
+function collapseSplitActivityIfOneSided(activity) {
+  if (!isSplitActivity(activity)) return;
+  if ((activity.signalMs || 0) > 0 && (activity.noiseMs || 0) > 0) return;
+
+  activity.classification = (activity.signalMs || 0) > 0 ? 'signal' : 'noise';
+  activity.durationMs = getActivityDurationMs(activity);
+  delete activity.signalMs;
+  delete activity.noiseMs;
 }
 
 function recalculateDailyTotals(daily) {
@@ -417,7 +466,11 @@ async function maybeShowLiveGoalCrossingPopup(settings = null) {
   const todayKey = getTodayKey(resolvedSettings.dayStartHour);
   const daily = await getDailyData(todayKey);
   const current = await getCurrentSession();
-  await maybeShowGoalCrossingPopup(todayKey, addLiveSessionToDailyData(daily, current), resolvedSettings);
+  await maybeShowGoalCrossingPopup(
+    todayKey,
+    await addLiveSessionToDailyData(daily, current, resolvedSettings),
+    resolvedSettings
+  );
 }
 
 async function maybeShowGoalCrossingPopup(todayKey, daily, settings = null) {
@@ -474,6 +527,100 @@ function calculateWebsiteTotals(daily = {}) {
   return totals;
 }
 
+async function getWeeklyStats(todayKey, liveDaily, settings = {}) {
+  const result = await chrome.storage.local.get(['dailyData']);
+  const dailyData = result.dailyData || {};
+  const dateKeys = getRecentDateKeys(todayKey, 7);
+  const includedWeekdays = getIncludedWeeklyAverageDays(settings);
+  const startDate = parseDateKeyOrNull(settings.weeklyAverageStartDate);
+  const stats = {
+    signalMs: 0,
+    noiseMs: 0,
+    totalMs: 0,
+    ratio: 0,
+    daysWithData: 0,
+    startDate: dateKeys[0],
+    endDate: todayKey,
+    includedWeekdays,
+    freshStartDate: settings.weeklyAverageStartDate || null
+  };
+
+  for (const dateKey of dateKeys) {
+    const date = parseDateKey(dateKey);
+    if (startDate && date < startDate) continue;
+    if (!includedWeekdays.includes(date.getDay())) continue;
+
+    const source = dateKey === todayKey ? liveDaily : dailyData[dateKey];
+    if (!source) continue;
+
+    const day = cloneDailyData(source);
+    recalculateDailyTotals(day);
+    const totals = calculateWebsiteTotals(day);
+    const total = totals.signalMs + totals.noiseMs;
+
+    if (total > 0) {
+      stats.daysWithData += 1;
+      stats.signalMs += totals.signalMs;
+      stats.noiseMs += totals.noiseMs;
+      stats.totalMs += total;
+    }
+  }
+
+  stats.ratio = stats.totalMs > 0 ? Math.round((stats.signalMs / stats.totalMs) * 100) : 0;
+  return stats;
+}
+
+function getIncludedWeeklyAverageDays(settings = {}) {
+  const days = Array.isArray(settings.weeklyAverageDays) ? settings.weeklyAverageDays : [];
+  const normalized = [...new Set(days
+    .map((day) => Number.parseInt(day, 10))
+    .filter((day) => Number.isInteger(day) && day >= 0 && day <= 6))]
+    .sort((a, b) => a - b);
+
+  return normalized.length > 0 ? normalized : [0, 1, 2, 3, 4, 5, 6];
+}
+
+function getRecentDateKeys(endDateKey, days) {
+  const date = parseDateKey(endDateKey);
+  const keys = [];
+
+  for (let offset = days - 1; offset >= 0; offset -= 1) {
+    const item = new Date(date);
+    item.setDate(item.getDate() - offset);
+    keys.push(formatLocalDateKey(item));
+  }
+
+  return keys;
+}
+
+function parseDateKey(dateKey) {
+  const [year, month, day] = String(dateKey || '').split('-').map((value) => Number.parseInt(value, 10));
+  if (!year || !month || !day) return new Date();
+  return new Date(year, month - 1, day);
+}
+
+function parseDateKeyOrNull(dateKey) {
+  const [year, month, day] = String(dateKey || '').split('-').map((value) => Number.parseInt(value, 10));
+  if (!year || !month || !day) return null;
+  return new Date(year, month - 1, day);
+}
+
+function formatLocalDateKey(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function cloneDailyData(daily = {}) {
+  return {
+    ...daily,
+    activities: Object.fromEntries(
+      Object.entries(daily.activities || {}).map(([domain, activity]) => [domain, { ...activity }])
+    )
+  };
+}
+
 function clampPercent(value, fallback = 0) {
   const resolved = Number.isFinite(value) ? value : fallback;
   return Math.min(100, Math.max(0, Math.round(resolved)));
@@ -521,9 +668,13 @@ async function getActiveTabSite(currentSession = null) {
     return { domain, classification: currentSession.classification };
   }
 
-  const rules = await getSiteRules();
-  const todayRules = await getTodaySiteRules();
-  return { domain, classification: classifyDomain(domain, mergeSiteRules(rules, todayRules)) };
+  const settings = await getSettings();
+  const todayKey = getTodayKey(settings.dayStartHour);
+  const [siteRules, todayRules] = await Promise.all([
+    getSiteRules(),
+    getTodaySiteRules(todayKey)
+  ]);
+  return { domain, classification: classifyEffectiveDomain(domain, siteRules, todayRules) };
 }
 
 async function handleVisibilityChange(payload = {}, sender = {}) {
@@ -535,15 +686,17 @@ async function handleVisibilityChange(payload = {}, sender = {}) {
     const tab = await chrome.tabs.get(tabId);
     if (!(await isTrackableTab(tab))) return { tracked: false };
     await finishOffWebSession();
-    await startSessionForTab(tab, { markActivity: true });
+    await startSessionForTab(tab);
+    await updateActionBadge();
     return { tracked: true, domain };
   }
 
   const current = await getCurrentSession();
   if (current?.tabId === tabId) {
-    await endSession(current);
     await clearCurrentSession();
     await stopHeartbeat();
+    await endSession(current);
+    await updateActionBadge();
   }
 
   return { tracked: false, domain };
@@ -554,6 +707,7 @@ async function handleActivityPing(payload = {}, sender = {}) {
   const domain = extractDomain(tab?.url || '');
   if (!tab?.id || !domain || domain === 'unknown') return { tracked: false };
 
+  await enforceCurrentSessionActivity();
   await recordTabActivity(tab, payload.source || 'input');
 
   if (!(await isTrackableTab(tab))) {
@@ -561,6 +715,7 @@ async function handleActivityPing(payload = {}, sender = {}) {
   }
 
   await startSessionForTab(tab);
+  await updateActionBadge();
   return { tracked: true, domain };
 }
 
@@ -572,18 +727,18 @@ async function startSessionForTab(tab, { markActivity = false } = {}) {
     return;
   }
 
+  await enforceCurrentSessionActivity(settings);
+
   if (markActivity) {
     await recordTabActivity(tab, 'activation');
   }
 
-  await enforceCurrentSessionActivity(settings);
-
   if (!(await isTrackableTab(tab))) {
     const current = await getCurrentSession();
     if (current) {
-      await endSession(current);
       await clearCurrentSession();
       await stopHeartbeat();
+      await endSession(current);
     }
     return;
   }
@@ -595,6 +750,8 @@ async function startSessionForTab(tab, { markActivity = false } = {}) {
   if (current?.tabId === tab.id && current.domain === domain) return;
 
   if (current) {
+    await clearCurrentSession();
+    await stopHeartbeat();
     await endSession(current);
   }
 
@@ -624,9 +781,9 @@ async function enforceCurrentSessionActivity(settings = null, { idleStateOverrid
   const engagement = await getSessionEngagementState(current, resolvedSettings, { idleStateOverride });
   if (engagement.engaged) return engagement;
 
-  await endSession(current, { endTime: engagement.endTime });
   await clearCurrentSession();
   await stopHeartbeat();
+  await endSession(current, { endTime: engagement.endTime, endTimeIsBounded: true });
 
   return engagement;
 }
@@ -648,10 +805,6 @@ async function getEngagementSnapshot(current, settings) {
 }
 
 async function getSessionEngagementState(session, settings, { idleStateOverride = null } = {}) {
-  if (!settings.requireActivityToTrack) {
-    return { engaged: true, reason: 'activity_gate_off' };
-  }
-
   const thresholdSeconds = getInactivityThresholdSeconds(settings);
   const thresholdMs = thresholdSeconds * 1000;
   const idleState = idleStateOverride || await queryIdleState(thresholdSeconds);
@@ -660,14 +813,19 @@ async function getSessionEngagementState(session, settings, { idleStateOverride 
   const now = Date.now();
 
   if (idleState !== 'active') {
+    const idleLastActivityAt = settings.requireActivityToTrack ? lastActivityAt : null;
     return {
       engaged: false,
       reason: idleState,
       idleState,
       lastActivityAt,
       thresholdSeconds,
-      endTime: getInactivityEndTime(session, lastActivityAt, thresholdMs, now)
+      endTime: getIdleEndTime(session, idleLastActivityAt, thresholdMs, now, idleState)
     };
+  }
+
+  if (!settings.requireActivityToTrack) {
+    return { engaged: true, reason: 'activity_gate_off', idleState, thresholdSeconds };
   }
 
   if (!lastActivityAt) {
@@ -701,10 +859,6 @@ async function getSessionEngagementState(session, settings, { idleStateOverride 
 }
 
 async function getTabEngagementState(tab, settings) {
-  if (!settings.requireActivityToTrack) {
-    return { engaged: true, reason: 'activity_gate_off' };
-  }
-
   const domain = extractDomain(tab?.url || '');
   const thresholdSeconds = getInactivityThresholdSeconds(settings);
   const thresholdMs = thresholdSeconds * 1000;
@@ -714,6 +868,10 @@ async function getTabEngagementState(tab, settings) {
 
   if (idleState !== 'active') {
     return { engaged: false, reason: idleState, idleState, lastActivityAt, thresholdSeconds };
+  }
+
+  if (!settings.requireActivityToTrack) {
+    return { engaged: true, reason: 'activity_gate_off', idleState, thresholdSeconds };
   }
 
   if (!lastActivityAt) {
@@ -732,21 +890,44 @@ function getInactivityEndTime(session, lastActivityAt, thresholdMs, now) {
   return Math.max(session.startTime, Math.min(now, lastActivityAt + thresholdMs));
 }
 
+function getIdleEndTime(session, lastActivityAt, thresholdMs, now, idleState) {
+  if (idleState === 'locked') {
+    return Math.max(session.startTime, now);
+  }
+
+  if (lastActivityAt) {
+    return getInactivityEndTime(session, lastActivityAt, thresholdMs, now);
+  }
+
+  return Math.max(session.startTime, now - thresholdMs);
+}
+
 async function recordTabActivity(tab, source = 'input') {
   const domain = extractDomain(tab?.url || '');
   if (!tab?.id || !domain || domain === 'unknown') return null;
 
   const tabActivity = (await chrome.storage.session.get(['tabActivity'])).tabActivity || {};
   const key = String(tab.id);
+  const previous = tabActivity[key]?.domain === domain ? tabActivity[key] : {};
+  const now = Date.now();
   const activity = {
+    ...previous,
     domain,
     source,
-    lastActivityAt: Date.now()
+    lastSeenAt: now
   };
+
+  if (isEngagementActivitySource(source)) {
+    activity.lastActivityAt = now;
+  }
 
   tabActivity[key] = activity;
   await chrome.storage.session.set({ tabActivity });
   return activity;
+}
+
+function isEngagementActivitySource(source) {
+  return ENGAGEMENT_ACTIVITY_SOURCES.has(source);
 }
 
 async function getStoredTabActivity(tabId, domain) {
@@ -820,37 +1001,83 @@ async function getFocusedActiveTab(windowId = null) {
 }
 
 async function classifyCurrent(domain) {
-  const rules = await getEffectiveSiteRules();
-  return classifyDomain(domain, rules);
-}
-
-async function getEffectiveSiteRules(settings = null) {
-  const resolvedSettings = settings || await getSettings();
-  const todayKey = getTodayKey(resolvedSettings.dayStartHour);
+  const settings = await getSettings();
+  const todayKey = getTodayKey(settings.dayStartHour);
   const [siteRules, todayRules] = await Promise.all([
     getSiteRules(),
     getTodaySiteRules(todayKey)
   ]);
-
-  return mergeSiteRules(siteRules, todayRules);
+  return classifyEffectiveDomain(domain, siteRules, todayRules);
 }
 
-function mergeSiteRules(siteRules = {}, todayRules = {}) {
-  return { ...todayRules, ...siteRules };
+function classifyEffectiveDomain(domain, siteRules = {}, todayRules = {}) {
+  return classifyDomainWithRulePriority(domain, [todayRules, siteRules]);
 }
 
-async function endSession(session, { endTime = Date.now() } = {}) {
+async function endSession(session, { endTime = Date.now(), endTimeIsBounded = false } = {}) {
   if (!session?.startTime) return;
 
-  const duration = endTime - session.startTime;
+  const settings = await getSettings();
+  const boundedEndTime = endTimeIsBounded
+    ? Math.max(session.startTime, endTime)
+    : await getSessionEndTime(session, { settings, endTime });
+  const duration = Math.max(0, boundedEndTime - session.startTime);
   if (duration < 1000) return;
 
-  await addDurationToToday(session.domain || OFF_WEB_KEY, session.classification || 'signal', duration);
+  await addDurationAcrossDateKeys(
+    session.domain || OFF_WEB_KEY,
+    session.classification || 'signal',
+    session.startTime,
+    boundedEndTime,
+    settings
+  );
 }
 
-async function addDurationToToday(domain, classification, durationMs) {
-  const todayKey = getTodayKey((await getSettings()).dayStartHour);
-  const daily = await getDailyData(todayKey);
+async function getSessionDurationMs(session, { settings = null, endTime = Date.now() } = {}) {
+  if (!session?.startTime) return 0;
+
+  const boundedEndTime = await getSessionEndTime(session, { settings, endTime });
+  return Math.max(0, boundedEndTime - session.startTime);
+}
+
+async function getSessionEndTime(session, { settings = null, endTime = Date.now() } = {}) {
+  if (!session?.startTime) return endTime;
+
+  const resolvedSettings = settings || await getSettings();
+  const thresholdSeconds = getInactivityThresholdSeconds(resolvedSettings);
+  const thresholdMs = thresholdSeconds * 1000;
+  const activity = await getStoredTabActivity(session.tabId, session.domain);
+  const lastActivityAt = activity?.lastActivityAt || session.lastActivityAt || null;
+  const idleState = await queryIdleState(thresholdSeconds);
+
+  if (idleState !== 'active') {
+    const idleLastActivityAt = resolvedSettings.requireActivityToTrack ? lastActivityAt : null;
+    return getIdleEndTime(session, idleLastActivityAt, thresholdMs, endTime, idleState);
+  }
+
+  if (!resolvedSettings.requireActivityToTrack) {
+    return Math.max(session.startTime, endTime);
+  }
+
+  if (!lastActivityAt) return session.startTime;
+
+  return Math.max(session.startTime, Math.min(endTime, lastActivityAt + thresholdMs));
+}
+
+async function addDurationAcrossDateKeys(domain, classification, startTime, endTime, settings = null) {
+  const resolvedSettings = settings || await getSettings();
+  const segments = getDateSegments(startTime, endTime, resolvedSettings.dayStartHour);
+
+  for (const segment of segments) {
+    const durationMs = segment.endTime - segment.startTime;
+    if (durationMs >= 1000) {
+      await addDurationToDate(segment.dateKey, domain, classification, durationMs);
+    }
+  }
+}
+
+async function addDurationToDate(dateKey, domain, classification, durationMs) {
+  const daily = await getDailyData(dateKey);
   const key = domain || OFF_WEB_KEY;
 
   const activity = daily.activities[key];
@@ -874,27 +1101,81 @@ async function addDurationToToday(domain, classification, durationMs) {
     daily.totalNoiseMs = (daily.totalNoiseMs || 0) + durationMs;
   }
 
-  await updateDailyDataAndMaybeShowGoalEffect(todayKey, daily);
+  await updateDailyDataAndMaybeShowGoalEffect(dateKey, daily);
 }
 
-async function startOffWebSession() {
+function getDateSegments(startTime, endTime, dayStartHour = 0) {
+  const segments = [];
+  let cursor = Math.max(0, Number(startTime) || 0);
+  const finalTime = Math.max(cursor, Number(endTime) || cursor);
+
+  while (cursor < finalTime) {
+    const nextBoundary = getNextDayStartMs(cursor, dayStartHour);
+    const segmentEnd = Math.min(finalTime, nextBoundary);
+    segments.push({
+      dateKey: getTodayKey(dayStartHour, new Date(cursor)),
+      startTime: cursor,
+      endTime: segmentEnd
+    });
+    cursor = segmentEnd;
+  }
+
+  return segments;
+}
+
+function getNextDayStartMs(timestamp, dayStartHour = 0) {
+  const date = new Date(timestamp);
+  const dayStart = new Date(
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate(),
+    dayStartHour || 0,
+    0,
+    0,
+    0
+  );
+
+  if (date >= dayStart) {
+    dayStart.setDate(dayStart.getDate() + 1);
+  }
+
+  return dayStart.getTime();
+}
+
+async function startOffWebSession(settings = null) {
+  const resolvedSettings = settings || await getSettings();
+  if (resolvedSettings.trackingPaused) {
+    await chrome.storage.session.remove('offWebStart');
+    return;
+  }
+
+  const result = await chrome.storage.session.get(['offWebStart']);
+  if (result.offWebStart) return;
+
   await chrome.storage.session.set({ offWebStart: Date.now() });
 }
 
-async function finishOffWebSession({ restart = false } = {}) {
+async function finishOffWebSession({ restart = false, endTime = Date.now(), settings = null } = {}) {
+  const resolvedSettings = settings || await getSettings();
   const result = await chrome.storage.session.get(['offWebStart']);
   const offWebStart = result.offWebStart;
   if (!offWebStart) return;
 
-  const duration = Date.now() - offWebStart;
+  if (resolvedSettings.trackingPaused) {
+    await chrome.storage.session.remove('offWebStart');
+    return;
+  }
+
+  const boundedEndTime = Math.max(offWebStart, endTime);
+  const duration = boundedEndTime - offWebStart;
   await chrome.storage.session.remove('offWebStart');
 
   if (duration >= OFF_WEB_MIN_MS) {
-    await addDurationToToday(OFF_WEB_KEY, 'signal', duration);
+    await addDurationAcrossDateKeys(OFF_WEB_KEY, 'signal', offWebStart, boundedEndTime, resolvedSettings);
   }
 
   if (restart) {
-    await startOffWebSession();
+    await startOffWebSession(resolvedSettings);
   }
 }
 
@@ -904,9 +1185,32 @@ async function resetToday() {
   const result = await chrome.storage.local.get(['dailyData']);
   const dailyData = result.dailyData || {};
   delete dailyData[todayKey];
+
+  await clearCurrentSession();
+  await stopHeartbeat();
+  await chrome.storage.session.remove(['tabActivity', 'offWebStart']);
   await chrome.storage.local.set({ dailyData });
   await clearTodaySiteRules(todayKey);
   await clearGoalEffectStateForDate(todayKey);
+  await updateActionBadge();
+}
+
+async function clearTrackingHistory() {
+  await clearCurrentSession();
+  await stopHeartbeat();
+  await chrome.storage.session.remove(['tabActivity', 'offWebStart']);
+  await chrome.storage.local.remove(['dailyData', 'goalEffectState']);
+  await updateActionBadge();
+}
+
+async function clearAllData() {
+  await clearCurrentSession();
+  await stopHeartbeat();
+  await chrome.storage.session.clear();
+  await chrome.storage.local.clear();
+  await scheduleMidnightAlarm();
+  await configureIdleDetection();
+  await startBadgeUpdater();
 }
 
 async function toggleTracking(paused = null) {
@@ -918,16 +1222,18 @@ async function toggleTracking(paused = null) {
   if (nextPaused) {
     const current = await getCurrentSession();
     if (current) {
-      await endSession(current);
       await clearCurrentSession();
+      await endSession(current);
     }
+    await chrome.storage.session.remove('offWebStart');
     await stopHeartbeat();
   } else {
-    await finishOffWebSession();
+    await finishOffWebSession({ settings: updatedSettings });
     const tab = await getFocusedActiveTab();
     if (tab) await startSessionForTab(tab, { markActivity: true });
   }
 
+  await updateActionBadge();
   return { trackingPaused: nextPaused };
 }
 
@@ -942,11 +1248,75 @@ async function stopHeartbeat() {
   await chrome.alarms.clear(HEARTBEAT_ALARM);
 }
 
+async function startBadgeUpdater(settings = null) {
+  const resolvedSettings = settings || await getSettings();
+  await chrome.alarms.clear(BADGE_ALARM);
+
+  if (resolvedSettings.showRatioBadge === false) {
+    await clearActionBadge();
+    return;
+  }
+
+  await chrome.alarms.create(BADGE_ALARM, { periodInMinutes: 1 });
+  await updateActionBadge(resolvedSettings);
+}
+
+async function clearActionBadge() {
+  if (!chrome.action?.setBadgeText) return;
+  await chrome.action.setBadgeText({ text: '' });
+}
+
+async function updateActionBadge(settings = null, { enforceActivity = true } = {}) {
+  if (!chrome.action?.setBadgeText) return;
+
+  const resolvedSettings = settings || await getSettings();
+  if (resolvedSettings.showRatioBadge === false) {
+    await clearActionBadge();
+    return;
+  }
+
+  if (enforceActivity) {
+    await enforceCurrentSessionActivity(resolvedSettings);
+  }
+
+  const current = await getCurrentSession();
+  const currentSite = await getActiveTabSite(current);
+  if (!currentSite?.domain) {
+    await clearActionBadge();
+    return;
+  }
+
+  const todayKey = getTodayKey(resolvedSettings.dayStartHour);
+  const daily = await getDailyData(todayKey);
+  const liveDaily = await addLiveSessionToDailyData(daily, current, resolvedSettings);
+  const totals = calculateWebsiteTotals(liveDaily);
+  const total = totals.signalMs + totals.noiseMs;
+  const ratio = total > 0 ? Math.round((totals.signalMs / total) * 100) : 0;
+  const classification = currentSite.classification === 'noise' ? 'noise' : 'signal';
+
+  await chrome.action.setBadgeBackgroundColor({
+    color: classification === 'noise' ? NOISE_BADGE_COLOR : SIGNAL_BADGE_COLOR
+  });
+  await chrome.action.setBadgeText({ text: `${ratio}%` });
+
+  if (chrome.action.setBadgeTextColor) {
+    try {
+      await chrome.action.setBadgeTextColor({ color: '#ffffff' });
+    } catch (e) {}
+  }
+
+  if (chrome.action.setTitle) {
+    await chrome.action.setTitle({
+      title: `Signal to Noise Ratio - ${ratio}% Today's Website Signal Ratio`
+    });
+  }
+}
+
 async function handleMidnightReset() {
   const current = await getCurrentSession();
   if (current) {
-    await endSession(current);
     await clearCurrentSession();
+    await endSession(current);
   }
 
   await finishOffWebSession({ restart: true });
@@ -955,6 +1325,7 @@ async function handleMidnightReset() {
 
   const tab = await getFocusedActiveTab();
   if (tab) await startSessionForTab(tab);
+  await updateActionBadge();
 }
 
 async function scheduleMidnightAlarm(dayStartHour = null) {
@@ -1012,12 +1383,21 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
     const current = await getCurrentSession();
     if (current) {
       await maybeShowLiveGoalCrossingPopup();
-      await setCurrentSession({ ...current, lastHeartbeat: Date.now() });
+      const latest = await getCurrentSession();
+      if (
+        latest?.tabId === current.tabId &&
+        latest?.domain === current.domain &&
+        latest?.startTime === current.startTime
+      ) {
+        await setCurrentSession({ ...latest, lastHeartbeat: Date.now() });
+      }
     } else {
       await chrome.alarms.clear(HEARTBEAT_ALARM);
     }
   } else if (alarm.name === MIDNIGHT_ALARM) {
     await handleMidnightReset();
+  } else if (alarm.name === BADGE_ALARM) {
+    await updateActionBadge();
   }
 });
 
@@ -1025,15 +1405,19 @@ chrome.tabs.onActivated.addListener(async (activeInfo) => {
   try {
     const tab = await chrome.tabs.get(activeInfo.tabId);
     await startSessionForTab(tab, { markActivity: true });
-  } catch (e) {}
+    await updateActionBadge();
+  } catch (e) {
+    await updateActionBadge().catch(() => {});
+  }
 });
 
 chrome.tabs.onRemoved.addListener(async (tabId) => {
   const current = await getCurrentSession();
   if (current?.tabId === tabId) {
-    await endSession(current);
     await clearCurrentSession();
     await stopHeartbeat();
+    await endSession(current);
+    await updateActionBadge();
   }
 });
 
@@ -1041,47 +1425,82 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
   if (!tab.active || !(changeInfo.url || changeInfo.status === 'complete')) return;
   try {
     await startSessionForTab(tab, { markActivity: !!changeInfo.url });
-  } catch (e) {}
+    await updateActionBadge();
+  } catch (e) {
+    await updateActionBadge().catch(() => {});
+  }
 });
 
 chrome.windows.onFocusChanged.addListener(async (windowId) => {
+  const settings = await getSettings();
   if (windowId === chrome.windows.WINDOW_ID_NONE) {
     const current = await getCurrentSession();
     if (current) {
-      await endSession(current);
       await clearCurrentSession();
       await stopHeartbeat();
+      await endSession(current);
     }
-    await startOffWebSession();
+    await startOffWebSession(settings);
+    await updateActionBadge();
     return;
   }
 
-  await finishOffWebSession();
+  if (settings.trackingPaused) {
+    await chrome.storage.session.remove('offWebStart');
+    await updateActionBadge(settings);
+    return;
+  }
+
+  await finishOffWebSession({ settings });
 
   try {
     const tab = await getFocusedActiveTab(windowId);
     if (tab) await startSessionForTab(tab, { markActivity: true });
-  } catch (e) {}
+    await updateActionBadge();
+  } catch (e) {
+    await updateActionBadge().catch(() => {});
+  }
 });
 
 chrome.storage.onChanged.addListener((changes, areaName) => {
-  if (areaName === 'local' && changes.settings?.newValue) {
-    scheduleMidnightAlarm(changes.settings.newValue.dayStartHour).catch(() => {});
-    configureIdleDetection(changes.settings.newValue).catch(() => {});
+  if (areaName === 'local' && changes.settings) {
+    const settingsTask = changes.settings.newValue ? Promise.resolve(changes.settings.newValue) : getSettings();
+    settingsTask.then((settings) => {
+      scheduleMidnightAlarm(settings.dayStartHour).catch(() => {});
+      configureIdleDetection(settings).catch(() => {});
+      startBadgeUpdater(settings).catch(() => {});
+    }).catch(() => {});
+  } else if (areaName === 'local' && (changes.dailyData || changes.siteRules || changes.todaySiteRules)) {
+    updateActionBadge(null, { enforceActivity: false }).catch(() => {});
   }
 });
 
 if (chrome.idle?.onStateChanged) {
   chrome.idle.onStateChanged.addListener(async (idleState) => {
+    const settings = await getSettings();
     if (idleState === 'active') {
       try {
         const tab = await getFocusedActiveTab();
-        if (tab) await startSessionForTab(tab, { markActivity: true });
-      } catch (e) {}
+        if (tab) {
+          await startSessionForTab(tab, { markActivity: true });
+        } else {
+          await startOffWebSession(settings);
+        }
+        await updateActionBadge();
+      } catch (e) {
+        await updateActionBadge().catch(() => {});
+      }
       return;
     }
 
-    await enforceCurrentSessionActivity(null, { idleStateOverride: idleState });
+    await enforceCurrentSessionActivity(settings, { idleStateOverride: idleState });
+    await finishOffWebSession({
+      endTime: idleState === 'locked'
+        ? Date.now()
+        : Date.now() - (getInactivityThresholdSeconds(settings) * 1000),
+      settings
+    });
+    await updateActionBadge();
   });
 }
 
@@ -1094,12 +1513,18 @@ chrome.runtime.onStartup.addListener(async () => {
   try {
     const tab = await getFocusedActiveTab();
     if (tab) await startSessionForTab(tab);
-  } catch (e) {}
+    await updateActionBadge();
+  } catch (e) {
+    await updateActionBadge().catch(() => {});
+  }
+
+  await startBadgeUpdater();
 });
 
 chrome.runtime.onInstalled.addListener(async () => {
   await scheduleMidnightAlarm();
   await configureIdleDetection();
+  await startBadgeUpdater();
 });
 
-console.log('S2NRatio background service worker ready');
+console.log('Signal to Noise Ratio background service worker ready');

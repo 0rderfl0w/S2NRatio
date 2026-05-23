@@ -65,6 +65,26 @@ export function classifyDomain(domain, siteRules = {}) {
     return savedRule;
   }
 
+  return classifyDefaultDomain(normalized);
+}
+
+export function classifyDomainWithRulePriority(domain, ruleSets = []) {
+  const normalized = normalizeDomain(domain);
+  if (!normalized) {
+    return 'signal';
+  }
+
+  for (const rules of ruleSets) {
+    const savedRule = getMatchingRule(normalized, rules);
+    if (savedRule === 'signal' || savedRule === 'noise') {
+      return savedRule;
+    }
+  }
+
+  return classifyDefaultDomain(normalized);
+}
+
+function classifyDefaultDomain(normalized) {
   for (const d of SIGNAL_DOMAINS) {
     if (normalized === d || normalized.endsWith('.' + d)) {
       return 'signal';

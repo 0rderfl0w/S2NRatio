@@ -1,7 +1,7 @@
-# S2NRatio
+# Signal to Noise Ratio
 
 ## Project Overview
-S2NRatio is a lightweight Chrome extension that helps users understand and optimize their daily browsing time by categorizing activities into **Signal** (productive, work-related) and **Noise** (leisurely or distracting). The goal is to provide clear visibility into how time is spent online, encouraging more intentional use of the browser.
+Signal to Noise Ratio is a lightweight Chrome extension that helps users understand and optimize their daily browsing time by categorizing activities into **Signal** (productive, work-related) and **Noise** (leisurely or distracting). The goal is to provide clear visibility into how time is spent online, encouraging more intentional use of the browser.
 
 ## Core Concept
 - **Active Engaged-Tab Tracking**: The extension tracks the currently active and visible tab only while there is recent tab activity, such as mouse, keyboard, scroll, or touch input. This avoids counting a site that is merely left open.
@@ -19,7 +19,9 @@ S2NRatio is a lightweight Chrome extension that helps users understand and optim
   - Settings can restrict this back to default Noise sites only.
 - **Daily Dashboard on Click**: Clicking the extension icon opens a popup showing:
   - Overall Signal-to-Noise ratio as a percentage (e.g., 72% Signal)
-  - A customizable status bar with named ratio tiers (defaults: 80% "80/20", 90% "Jobs", 100% "Musk")
+  - Seven-day average Signal-to-Noise ratio based on recent website time
+  - Optional toolbar badge showing today's Website Signal Ratio, colored by the current site's Signal/Noise classification
+  - A customizable status bar with named ratio tiers (defaults: 70% "Goal", 80% "Jobs", 100% "Musk")
   - Optional goal-crossing effects: confetti popup when crossing above the daily goal and a below-goal popup when dropping under it.
   - Breakdown lists:
     - **Signal**: "off the web" (3h 28m), Gmail (32m), Linear (1h 5m), etc.
@@ -29,6 +31,8 @@ S2NRatio is a lightweight Chrome extension that helps users understand and optim
 ## Key Features for v0.1
 - Real-time timer that only runs on the active visible tab when the user has recently engaged with that tab.
 - Persistent local storage for daily logs (resets at midnight or user-defined day start).
+- Seven-day average ratio calculated from local daily logs, with Settings controls for which weekdays count and whether the average starts fresh from today.
+- Optional extension-icon badge that shows today's Website Signal Ratio every 60 seconds.
 - Simple classification engine with hardcoded initial rules + ability to mark sites as Signal/Noise permanently or for today only.
 - Clean, minimal UI focused on the ratio and lists.
 - Customizable status bar name and tier goals in Settings.
@@ -39,7 +43,7 @@ S2NRatio is a lightweight Chrome extension that helps users understand and optim
 Builders, founders, solopreneurs, and knowledge workers who want honest data on where their attention goes without complex setup or SaaS subscriptions.
 
 ## Philosophy
-Time is the ultimate currency. S2NRatio gives users a mirror to see whether they're investing it in Signal or letting it leak into Noise. The override mechanism respects that context matters — X can be pure noise or vital work depending on the session.
+Time is the ultimate currency. Signal to Noise Ratio gives users a mirror to see whether they're investing it in Signal or letting it leak into Noise. The override mechanism respects that context matters — X can be pure noise or vital work depending on the session.
 
 ## Development Guidelines
 - Use Manifest V3.

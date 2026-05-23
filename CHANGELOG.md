@@ -2,6 +2,85 @@
 
 All notable local changes to S2NRatio are documented here.
 
+## 2026-05-23 - Audit Gate Bug Fixes
+
+### Changed
+
+- Bumped the extension package version to `0.1.8`.
+- Fixed stale live sessions when switching from an engaged tab to a visible tab that has not received real user input yet.
+- Fixed day-start rollover attribution so sessions spanning midnight or a custom day boundary are split into the correct local tracking dates.
+- Fixed Pause Tracking so off-browser Signal time cannot continue accruing while tracking is paused.
+- Fixed off-browser Signal time so idle or locked machine time stops/caps the off-browser session instead of counting raw wall-clock time.
+- Fixed idle/locked protection so it still applies when the user disables the per-tab activity requirement.
+- Fixed no-activity-gate idle cutoff so it ignores stale tab activity timestamps and stops at the actual idle boundary.
+- Fixed heartbeat updates so an alarm cannot restore a stale session after pause, reset, clear, or tab changes.
+- Fixed badge refreshes triggered by storage changes so they cannot re-enter session-ending writes.
+- Fixed Website list pencil edits so row-level Signal/Noise corrections no longer create permanent site rules.
+- Fixed today-only rule precedence so a today parent-domain rule can override a permanent exact subdomain rule for the current day.
+- Fixed CSV export so it includes the active live session and skips off-web rows when exporting website-ratio totals.
+- Fixed tracking-history and all-data clearing so they go through background cleanup paths that clear live session state before storage changes.
+- Removed the extra manifest `host_permissions` entry while keeping the required all-sites content script match.
+- Updated README and privacy wording to match engagement-gated tracking, manifest permissions, and Chrome Web Store Limited Use disclosure expectations.
+
+## 2026-05-23 - Pre-Submit Bug Sweep
+
+### Changed
+
+- Bumped the extension package version to `0.1.7`.
+- Fixed today-only site rules so `Remember today` overrides a permanent rule for the current tracking day.
+- Fixed Settings `Reset Today's Data` so it uses the background reset path, clearing today's tracking, today-only rules, goal-effect state, current session state, and badge state consistently.
+- Fixed the background reset path so old live-session time cannot reappear immediately after a reset.
+- Fixed CSV export so daily totals and ratios are recalculated from website activities instead of trusting stale aggregate counters.
+
+## 2026-05-23 - Stale Session Duration Guard
+
+### Changed
+
+- Bumped the extension package version to `0.1.6`.
+- Fixed a stale-session bug where a new activity event after a long idle/wake gap could make an old tab session look continuously active.
+- Stopped page load, focus, and visibility events from counting as engaged website use; only actual page interaction events count for activity-gated tracking.
+- Capped live session display and badge math to the last real input window so the popup does not add hours from an abandoned active tab.
+- Preserved the existing `Awaiting input` behavior for visible tabs that have not received real page activity yet.
+
+## 2026-05-23 - Toolbar Ratio Badge
+
+### Changed
+
+- Bumped the extension package version to `0.1.5`.
+- Renamed the popup ratio label to `Today's Website Signal Ratio` so it is clear the number is daily and website-only.
+- Added an optional toolbar badge that shows today's Website Signal Ratio on the extension icon.
+- The toolbar badge updates every 60 seconds and also refreshes after tab changes, tracking edits, classification changes, resets, and settings changes.
+- The badge background is green when the current site is Signal and red when the current site is Noise.
+- Added a Settings checkbox for turning the toolbar ratio badge on or off. It is enabled by default.
+
+## 2026-05-23 - Product Rename, Weekly Average, and Popup Support
+
+### Changed
+
+- Renamed the user-facing extension from `S2NRatio` to `Signal to Noise Ratio`.
+- Bumped the extension package version to `0.1.4` for Chrome Web Store upload compatibility after the weekly-average settings work.
+- Updated the manifest summary and docs to describe daily and weekly Signal/Noise tracking.
+- Added Kevin O'Leary / Steve Jobs focus inspiration context to the README without implying endorsement.
+- Replaced the packaged extension icons with the simple Signal/Noise mark.
+- Fixed lowest-tier status labels so the popup can show the tier name below the bar.
+- Changed the default status tiers to `70% Goal`, `80% Jobs`, and `100% Musk`.
+- Added a migration for the previous default tiers so old saved defaults are upgraded without overwriting genuinely custom status tiers.
+- Added Settings checkboxes for which weekdays affect the seven-day average.
+- Added `Start Average Fresh Today`, which makes the weekly average ignore older days without deleting stored history.
+- Added `Use Full 7-Day History` to remove the fresh-start cutoff.
+- Added a local storage summary and a trash action for clearing tracking history while keeping settings and site rules.
+
+### Verified
+
+- Ran a headless Brave E2E pass against the unpacked extension in a temporary browser profile.
+- Covered manifest load, default classification, remembered parent-domain rules, quick classifier suppression after Remember always, popup ratio math, weekly average, coffee link, row edit/flip/split actions, Settings status-label persistence, and pause/resume tracking.
+- Verified weekly-average weekday filtering, fresh-start cutoff behavior, storage summary counts, and tracking-history clearing in a temporary browser profile.
+
+### Added
+
+- Added a seven-day weighted Website Signal Ratio average to the popup.
+- Added a main-popup `Buy the creator a coffee` support block, matching the Settings support link.
+
 ## 2026-05-22 - Chrome Web Store Prep
 
 ### Changed
@@ -71,8 +150,8 @@ All notable local changes to S2NRatio are documented here.
 
 - Added a compact popup status bar under the header.
 - Added default status tiers:
-  - `80%` -> `80/20`
-  - `90%` -> `Jobs`
+  - `70%` -> `Goal`
+  - `80%` -> `Jobs`
   - `100%` -> `Musk`
 - Added Settings controls for:
   - status bar name

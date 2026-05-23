@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>S2NRatio</title>
+  <title>Signal to Noise Ratio</title>
   <style>
     body {
       width: 380px;
@@ -84,7 +84,7 @@
       margin-bottom: 4px;
     }
     .status-markers-goal {
-      height: 18px;
+      height: 28px;
       margin-top: 6px;
     }
     .status-marker {
@@ -113,6 +113,16 @@
       align-items: flex-end;
       gap: 2px;
       line-height: 1;
+    }
+    .status-marker-goal .status-marker-label.with-name {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 2px;
+      line-height: 1;
+    }
+    .status-marker.edge-start .status-marker-label.with-name {
+      align-items: flex-start;
     }
     .status-marker-name {
       display: block;
@@ -194,7 +204,7 @@
 
     .metrics {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
+      grid-template-columns: repeat(2, 1fr);
       gap: 8px;
       margin-bottom: 16px;
     }
@@ -351,6 +361,34 @@
       gap: 8px;
       flex-wrap: wrap;
     }
+    .support-footer {
+      margin-top: 16px;
+      padding-top: 16px;
+      border-top: 1px solid #1f2937;
+      text-align: center;
+      color: #94a3b8;
+    }
+    .support-footer p {
+      margin: 0 auto 10px;
+      max-width: 300px;
+      font-size: 12px;
+      line-height: 1.4;
+    }
+    .coffee-link {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 9px 14px;
+      border-radius: 8px;
+      background: #fbbf24;
+      color: #111827;
+      text-decoration: none;
+      font-size: 13px;
+      font-weight: 800;
+    }
+    .coffee-link:hover {
+      background: #f59e0b;
+    }
     .goal-effect-overlay {
       position: fixed;
       inset: 0;
@@ -420,12 +458,12 @@
   <!-- Header -->
   <div class="header">
     <div>
-      <div class="title">S2NRatio</div>
+      <div class="title">Signal to Noise Ratio</div>
       <div id="date" style="font-size: 11px; color: #64748b;"></div>
     </div>
     <div class="ratio-section">
       <div id="ratio" class="ratio">—</div>
-      <div class="ratio-label">Website Signal Ratio</div>
+      <div class="ratio-label">Today's Website Signal Ratio</div>
     </div>
   </div>
 
@@ -460,6 +498,10 @@
       <div id="top-noise" class="metric-value">—</div>
     </div>
     <div class="metric">
+      <div class="metric-label">7-Day Avg</div>
+      <div id="weekly-average" class="metric-value">—</div>
+    </div>
+    <div class="metric">
       <div class="metric-label">Session</div>
       <div id="session-duration" class="metric-value">—</div>
     </div>
@@ -482,6 +524,15 @@
     <button id="pause-btn">Pause Tracking</button>
     <button id="reset-btn">Reset Today</button>
     <button id="settings-btn">Open Settings</button>
+  </div>
+
+  <div class="support-footer">
+    <p>
+      Signal to Noise Ratio is local-first, private, and free to use. If it helps protect your focus, a coffee keeps the project moving.
+    </p>
+    <a class="coffee-link" href="https://buymeacoffee.com/perspective" target="_blank" rel="noopener noreferrer">
+      Buy the creator a coffee
+    </a>
   </div>
 
   <div id="success-toast" class="success-toast">Saved!</div>

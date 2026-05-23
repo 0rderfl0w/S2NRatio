@@ -1,10 +1,14 @@
-# S2NRatio
+# Signal to Noise Ratio
 
-S2NRatio is a local-first Chrome extension for tracking whether browser time is
-Signal or Noise.
+Signal to Noise Ratio is a local-first Chrome extension for tracking whether
+browser time is Signal or Noise.
 
 It is built for people who want a clear daily read on whether their web time is
 moving the work forward or leaking into distraction.
+
+The idea is inspired by Kevin O'Leary's story about Steve Jobs and focus: keep
+the few priorities that matter, cut the rest, and ask how high you can keep your
+own Signal to Noise Ratio.
 
 ## What It Does
 
@@ -14,7 +18,8 @@ moving the work forward or leaking into distraction.
 - Classifies domains as Signal or Noise through built-in rules and user overrides.
 - Prompts once for new or unclassified websites so the user can label them quickly.
 - Supports permanent rules with `Remember always` and date-scoped rules with `Remember today`.
-- Shows a daily Website Signal Ratio in the extension popup.
+- Shows daily and seven-day Website Signal Ratios in the extension popup.
+- Shows today's Website Signal Ratio on the extension icon by default.
 - Lets users edit minutes, flip Signal/Noise status, or split one site's time between both.
 - Provides configurable goals, status tiers, and goal-crossing effects in the popup and active page.
 - Exports local tracking data to CSV from Settings.
@@ -26,16 +31,16 @@ moving the work forward or leaking into distraction.
 2. Enable Developer mode.
 3. Click `Load unpacked`.
 4. Select this project folder.
-5. Pin `S2NRatio`.
+5. Pin `Signal to Noise Ratio`.
 6. After local code changes, reload the unpacked extension before testing.
 
 ## Core Features
 
 ### Active Website Tracking
 
-S2NRatio tracks only the current active tab in the focused Chrome window. By
-default, the tab also needs recent mouse, keyboard, scroll, wheel, touch, page
-load, or focus activity before time counts.
+Signal to Noise Ratio tracks only the current active tab in the focused Chrome
+window. By default, the tab also needs recent mouse, keyboard, scroll, wheel, or
+touch activity before time counts.
 
 If the tab goes stale, the extension stops counting that website after the
 configured activity timeout. The default timeout is 120 seconds.
@@ -73,6 +78,8 @@ older default-Noise-only mode.
 The extension popup shows:
 
 - today's Website Signal Ratio
+- seven-day average Website Signal Ratio
+- optional toolbar badge with today's Website Signal Ratio
 - the current site and its classification
 - goal progress
 - top Noise source
@@ -81,9 +88,13 @@ The extension popup shows:
 - pause/resume tracking
 - reset-today shortcut
 - link to Settings
+- Buy the creator a coffee link
 
 The ratio shown in the popup is based on visible website rows, including split
 Signal/Noise segments, so the percentage matches the list math.
+
+The seven-day average can be filtered in Settings by weekday. Users can also
+start the average fresh from today without deleting stored history.
 
 ### Website List Editing
 
@@ -100,8 +111,8 @@ under the same domain. Each segment can be edited again afterward.
 
 The popup includes a configurable status bar. The default tiers are:
 
-- `80%` -> `80/20`
-- `90%` -> `Jobs`
+- `70%` -> `Goal`
+- `80%` -> `Jobs`
 - `100%` -> `Musk`
 
 Settings let the user change the status bar name, tier names, and tier
@@ -121,26 +132,30 @@ The Settings page includes:
 - active-tab activity requirement
 - inactivity timeout
 - quick prompt behavior
+- toolbar ratio badge toggle
+- weekly average weekday filters
+- start-average-fresh control that keeps stored history
 - goal-crossing effect toggles
 - status bar tier editor
 - manual site rules
 - CSV export
 - reset today's data
+- local storage summary and tracking-history trash action
 - `Support Open Source Devs` section with a Buy Me a Coffee link
 
 ## Permissions
 
-S2NRatio uses a small set of Chrome extension permissions:
+Signal to Noise Ratio uses a small set of Chrome extension permissions:
 
 - `tabs`: detect the active tab, active window, and current domain
 - `storage`: store settings, rules, daily totals, and session state locally
 - `alarms`: run periodic tracking checkpoints and day rollover cleanup
 - `idle`: avoid counting website time while the computer is idle or locked
-- `<all_urls>` host permission: inject the prompt and activity listener on visited pages
+- `<all_urls>` content script match: run the local prompt and activity listener on visited pages
 
 ## Privacy
 
-S2NRatio is local-first.
+Signal to Noise Ratio is local-first.
 
 - No external server is used for tracking.
 - Data is stored in Chrome extension storage.
@@ -154,7 +169,7 @@ See [PRIVACY.md](PRIVACY.md) for the full privacy policy.
 
 Main storage keys:
 
-- `settings`: user preferences, goals, prompt mode, status tiers, and tracking toggles
+- `settings`: user preferences, goals, weekly average filters, prompt mode, toolbar badge, status tiers, and tracking toggles
 - `siteRules`: permanent domain-level Signal/Noise overrides
 - `todaySiteRules`: date-scoped domain overrides
 - `dailyData`: daily domain activity, totals, and split Signal/Noise durations
@@ -167,7 +182,7 @@ Main storage keys:
 - `background.js`: service worker, session tracking, classification updates, edits, splits, and alarms
 - `content.js`: quick classifier prompt and user-activity pings
 - `popup/`: extension popup dashboard
-- `options/`: settings page, rules editor, reset, and CSV export
+- `options/`: settings page, weekly-average controls, rules editor, storage summary, reset, and CSV export
 - `utils/`: classification, storage, and time helpers
 - `CHANGELOG.md`: local change history
 - `spec.md`: original product and implementation spec
@@ -192,10 +207,9 @@ testing real pages.
 
 - Existing local Chrome storage can contain stale data from earlier builds. Use
   `Reset Today's Data` in Settings for cleaner manual testing.
-- Icons currently exist as local project assets and can be replaced before any
-  packaged release.
-- The extension has not been packaged for Chrome Web Store submission.
+- Icons use the simple Signal/Noise mark in `icons/`.
+- Chrome Web Store packages are generated under `dist/` when needed.
 
 ## License
 
-S2NRatio is open source under the MIT License. See `LICENSE`.
+Signal to Noise Ratio is open source under the MIT License. See `LICENSE`.

@@ -7,26 +7,74 @@ import { normalizeDomain } from './classification.js';
 const DEFAULT_SETTINGS = {
   dayStartHour: 0,
   showPopup: true,
+  showRatioBadge: true,
   promptMode: 'always',
   autoClassify: true,
   targetSignalRatio: 70,
   trackingPaused: false,
   requireActivityToTrack: true,
   inactivityThresholdSeconds: 120,
+  weeklyAverageDays: [0, 1, 2, 3, 4, 5, 6],
+  weeklyAverageStartDate: null,
   goalCelebrationEnabled: true,
   goalDropAlertEnabled: true,
   statusBarName: 'Signal Status',
   statusTiers: [
     { goal: 100, label: 'Musk' },
-    { goal: 90, label: 'Jobs' },
-    { goal: 80, label: '80/20' }
+    { goal: 80, label: 'Jobs' },
+    { goal: 70, label: 'Goal' }
   ],
   schemaVersion: 1
 };
 
+const STATUS_LABEL_ALIASES = {
+  'Elon Musk': 'Musk',
+  'Steve Jobs': 'Jobs',
+  '80/20': 'Goal'
+};
+
 export async function getSettings() {
   const result = await chrome.storage.local.get(['settings']);
-  return { ...DEFAULT_SETTINGS, ...(result.settings || {}) };
+  return normalizeSettings({ ...DEFAULT_SETTINGS, ...(result.settings || {}) });
+}
+
+function normalizeSettings(settings) {
+  const rawTiers = Array.isArray(settings.statusTiers) ? settings.statusTiers : [];
+  if (isLegacyDefaultStatusTiers(rawTiers)) {
+    return { ...settings, statusTiers: DEFAULT_SETTINGS.statusTiers };
+  }
+
+  return settings;
+}
+
+function isLegacyDefaultStatusTiers(tiers) {
+  if (tiers.length !== 3) return false;
+
+  const normalized = tiers
+    .map((tier) => ({
+      goal: clampNumber(Number(tier?.goal), 0, 100, 0),
+      label: normalizeStatusLabel(tier?.label)
+    }))
+    .sort((a, b) => b.goal - a.goal);
+
+  return (
+    normalized[0]?.goal === 100 &&
+    normalized[0]?.label === 'Musk' &&
+    normalized[1]?.goal === 90 &&
+    normalized[1]?.label === 'Jobs' &&
+    normalized[2]?.goal === 80 &&
+    ['Goal', '80/20'].includes(normalized[2]?.label)
+  );
+}
+
+function normalizeStatusLabel(label) {
+  const value = String(label || '').trim();
+  return (STATUS_LABEL_ALIASES[value] || value).slice(0, 32);
+}
+
+function clampNumber(value, min, max, fallback = min) {
+  const resolved = Number.isFinite(value) ? value : fallback;
+  return Math.min(max, Math.max(min, Math.round(resolved)));
 }
 
 export async function getDailyData(dateKey = null) {

@@ -303,12 +303,12 @@ function showGoalEffectPopup({ effectType = 'celebrate', ratio = 0, target = 0 }
   const close = document.createElement('button');
   close.className = 'close';
   close.type = 'button';
-  close.setAttribute('aria-label', 'Close S2NRatio goal popup');
+  close.setAttribute('aria-label', 'Close Signal to Noise Ratio goal popup');
   close.textContent = 'x';
 
   const eyebrow = document.createElement('div');
   eyebrow.className = 'eyebrow';
-  eyebrow.textContent = 'S2NRatio';
+  eyebrow.textContent = 'Signal to Noise Ratio';
 
   const title = document.createElement('div');
   title.className = 'title';
@@ -382,12 +382,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 document.addEventListener('visibilitychange', notifyVisibility);
 window.addEventListener('pageshow', () => {
   notifyVisibility();
-  notifyActivity('pageshow', { force: true });
   checkAndShowOverridePopup();
 });
 window.addEventListener('focus', () => {
   notifyVisibility();
-  notifyActivity('focus', { force: true });
 });
 window.addEventListener('beforeunload', () => {
   closeOverridePopup(true);
@@ -413,7 +411,6 @@ if (document.readyState === 'loading') {
 }
 
 notifyVisibility();
-notifyActivity('load', { force: true });
 
 let lastUrl = location.href;
 new MutationObserver(() => {
