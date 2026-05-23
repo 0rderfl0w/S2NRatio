@@ -11,9 +11,10 @@ Signal to Noise Ratio stores extension data locally in Chrome storage on your de
 - website domains, such as `example.com`
 - Signal or Noise classifications for domains
 - daily time totals by domain
+- recent activity event types and timestamps, such as click, scroll, keyboard, touch, mouse movement, or visibility activity, used only to decide whether the active tab should keep counting
 - extension settings, such as daily goal, prompt behavior, and status tiers
 
-Signal to Noise Ratio does not store full URLs, page paths, query strings, page titles, page contents, form entries, keystroke contents, passwords, or payment details.
+Signal to Noise Ratio does not store full URLs, page paths, query strings, page titles, page contents, form entries, keystroke contents, mouse coordinates, passwords, or payment details.
 
 ## How Data Is Used
 
