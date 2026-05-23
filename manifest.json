@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Signal to Noise Ratio",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "description": "Track daily and weekly Signal vs Noise ratios. Protect top priorities, cut distractions, and keep your focus score high.",
   "permissions": [
     "tabs",

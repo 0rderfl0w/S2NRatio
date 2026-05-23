@@ -34,7 +34,13 @@ const ENGAGEMENT_ACTIVITY_SOURCES = new Set([
   'scroll',
   'wheel',
   'touchstart',
-  'mousemove'
+  'mousemove',
+  // Browser-level user navigation is engagement too. After Reset Today clears
+  // content-script activity, relying only on page DOM input means tab switches,
+  // address-bar navigations, and link-driven page changes can sit at "Awaiting
+  // input" and drop real reading time until the next scroll/click.
+  'activation',
+  'navigation'
 ]);
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -719,7 +725,7 @@ async function handleActivityPing(payload = {}, sender = {}) {
   return { tracked: true, domain };
 }
 
-async function startSessionForTab(tab, { markActivity = false } = {}) {
+async function startSessionForTab(tab, { markActivity = false, markActivitySource = 'activation' } = {}) {
   const settings = await getSettings();
   if (settings.trackingPaused) {
     await clearCurrentSession();
@@ -730,7 +736,7 @@ async function startSessionForTab(tab, { markActivity = false } = {}) {
   await enforceCurrentSessionActivity(settings);
 
   if (markActivity) {
-    await recordTabActivity(tab, 'activation');
+    await recordTabActivity(tab, markActivitySource);
   }
 
   if (!(await isTrackableTab(tab))) {
@@ -1424,7 +1430,7 @@ chrome.tabs.onRemoved.addListener(async (tabId) => {
 chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
   if (!tab.active || !(changeInfo.url || changeInfo.status === 'complete')) return;
   try {
-    await startSessionForTab(tab, { markActivity: !!changeInfo.url });
+    await startSessionForTab(tab, { markActivity: !!changeInfo.url, markActivitySource: 'navigation' });
     await updateActionBadge();
   } catch (e) {
     await updateActionBadge().catch(() => {});

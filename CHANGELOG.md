@@ -2,6 +2,14 @@
 
 All notable local changes to S2NRatio are documented here.
 
+## 2026-05-23 - Navigation Tracking Regression Fix
+
+### Changed
+
+- Bumped the extension package version to `0.1.9`.
+- Fixed post-reset active-site tracking so user-driven tab activations and active-tab URL navigations count as engagement.
+- This prevents real browsing sessions from getting stuck at `Awaiting input` and only recording a tiny amount of time after Reset Today clears the previous tab-activity state.
+
 ## 2026-05-23 - Audit Gate Bug Fixes
 
 ### Changed
