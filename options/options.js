@@ -400,6 +400,27 @@ async function exportCsv() {
   URL.revokeObjectURL(url);
 }
 
+async function exportDebugLog() {
+  const response = await sendMessage('GET_TRACKING_DEBUG_LOG');
+  if (!response?.success) {
+    alert('Could not read tracking debug log.');
+    return;
+  }
+
+  const blob = new Blob([JSON.stringify(response.data || {}, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `s2nratio-debug-log-${getTodayKey()}.json`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+async function clearDebugLog() {
+  await sendMessage('CLEAR_TRACKING_DEBUG_LOG');
+  alert('Tracking debug log cleared.');
+}
+
 function getExportSegments(item) {
   if (Number.isFinite(item?.signalMs) || Number.isFinite(item?.noiseMs)) {
     return [
@@ -454,6 +475,8 @@ document.getElementById('reset-today').onclick = resetToday;
 document.getElementById('clear-history').onclick = clearTrackingHistory;
 document.getElementById('clear-all').onclick = clearAll;
 document.getElementById('export-csv').onclick = exportCsv;
+document.getElementById('export-debug-log').onclick = exportDebugLog;
+document.getElementById('clear-debug-log').onclick = clearDebugLog;
 
 loadSettings();
 loadRules();

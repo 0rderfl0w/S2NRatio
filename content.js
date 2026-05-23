@@ -6,8 +6,10 @@ let goalEffectPopup = null;
 let goalEffectTimer = null;
 let lastPromptedDomain = null;
 let lastActivityPingAt = 0;
+let mediaActivityTimer = null;
 
 const ACTIVITY_THROTTLE_MS = 15000;
+const MEDIA_ACTIVITY_INTERVAL_MS = 15000;
 
 function extractDomainFromLocation() {
   try {
@@ -48,6 +50,38 @@ function notifyActivity(source = 'input', { force = false } = {}) {
     source,
     at: now
   });
+}
+
+function hasPlayingMedia() {
+  return Array.from(document.querySelectorAll('video, audio')).some((media) => {
+    return !media.paused && !media.ended && media.readyState >= 2;
+  });
+}
+
+function notifyMediaPlayback({ force = false } = {}) {
+  if (!hasPlayingMedia()) return;
+  notifyActivity('media-playback', { force });
+}
+
+function refreshMediaActivityTimer() {
+  if (mediaActivityTimer) {
+    clearInterval(mediaActivityTimer);
+    mediaActivityTimer = null;
+  }
+
+  if (document.visibilityState !== 'visible' || !hasPlayingMedia()) return;
+
+  mediaActivityTimer = setInterval(() => notifyMediaPlayback(), MEDIA_ACTIVITY_INTERVAL_MS);
+}
+
+function handleMediaPlaybackEvent(event) {
+  if (!event.target?.matches?.('video, audio')) return;
+  if (event.type === 'play' || event.type === 'playing') {
+    notifyActivity('media-playback', { force: true });
+  } else if (event.type === 'timeupdate') {
+    notifyMediaPlayback();
+  }
+  refreshMediaActivityTimer();
 }
 
 async function checkAndShowOverridePopup() {
@@ -379,21 +413,34 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return false;
 });
 
-document.addEventListener('visibilitychange', notifyVisibility);
+document.addEventListener('visibilitychange', () => {
+  notifyVisibility();
+  refreshMediaActivityTimer();
+});
 window.addEventListener('pageshow', () => {
   notifyVisibility();
   checkAndShowOverridePopup();
+  refreshMediaActivityTimer();
 });
 window.addEventListener('focus', () => {
   notifyVisibility();
+  refreshMediaActivityTimer();
 });
 window.addEventListener('beforeunload', () => {
   closeOverridePopup(true);
   closeGoalEffectPopup(true);
+  if (mediaActivityTimer) clearInterval(mediaActivityTimer);
 });
 
 for (const eventName of ['pointerdown', 'keydown', 'scroll', 'wheel', 'touchstart', 'mousemove']) {
   document.addEventListener(eventName, () => notifyActivity(eventName), {
+    capture: true,
+    passive: true
+  });
+}
+
+for (const eventName of ['play', 'playing', 'timeupdate', 'pause', 'ended']) {
+  document.addEventListener(eventName, handleMediaPlaybackEvent, {
     capture: true,
     passive: true
   });
@@ -419,5 +466,8 @@ new MutationObserver(() => {
     lastPromptedDomain = null;
     notifyVisibility();
     checkAndShowOverridePopup();
+    refreshMediaActivityTimer();
   }
 }).observe(document, { subtree: true, childList: true });
+
+refreshMediaActivityTimer();

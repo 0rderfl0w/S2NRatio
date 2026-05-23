@@ -4,7 +4,7 @@
 Signal to Noise Ratio is a lightweight Chrome extension that helps users understand and optimize their daily browsing time by categorizing activities into **Signal** (productive, work-related) and **Noise** (leisurely or distracting). The goal is to provide clear visibility into how time is spent online, encouraging more intentional use of the browser.
 
 ## Core Concept
-- **Active Engaged-Tab Tracking**: The extension tracks the currently active and visible tab only while there is recent tab activity, such as mouse, keyboard, scroll, or touch input. This avoids counting a site that is merely left open.
+- **Active Engaged-Tab Tracking**: The extension tracks the currently active and visible tab only while there is recent tab activity, such as mouse, keyboard, scroll, touch input, browser tab activation/navigation, or active media playback. This avoids counting a site that is merely left open.
 - **Automatic Classification**: Detects the current website and classifies it as Signal or Noise based on predefined rules and user overrides.
   - Default Signal sites: email providers (Gmail, Outlook), productivity tools (Notion, Linear, Zoom, calendars), work-related domains.
   - Default Noise sites: social networks (X/Twitter, Facebook, Instagram, YouTube, Reddit), entertainment (Netflix, Twitch).

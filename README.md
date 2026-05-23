@@ -13,6 +13,7 @@ own Signal to Noise Ratio.
 ## What It Does
 
 - Tracks the active, visible Chrome tab while the user is actually engaging with it.
+- Keeps active video/audio playback counting as engagement so watching YouTube or other media does not silently stop after the idle timeout.
 - Stops counting stale tabs after inactivity, so a site left open does not keep running forever.
 - Uses Chrome idle state to stop website tracking when the computer is idle or locked.
 - Classifies domains as Signal or Noise through built-in rules and user overrides.
@@ -23,6 +24,7 @@ own Signal to Noise Ratio.
 - Lets users edit minutes, flip Signal/Noise status, or split one site's time between both.
 - Provides configurable goals, status tiers, and goal-crossing effects in the popup and active page.
 - Exports local tracking data to CSV from Settings.
+- Exports a temporary local tracking debug log from Settings for troubleshooting session starts/stops and duration writes.
 - Keeps tracking data local in Chrome storage.
 
 ## Install for Development
@@ -39,8 +41,9 @@ own Signal to Noise Ratio.
 ### Active Website Tracking
 
 Signal to Noise Ratio tracks only the current active tab in the focused Chrome
-window. By default, the tab also needs recent mouse, keyboard, scroll, wheel, or
-touch activity before time counts.
+window. By default, the tab also needs recent mouse, keyboard, scroll, wheel,
+touch, tab activation/navigation, or active media-playback activity before time
+counts.
 
 If the tab goes stale, the extension stops counting that website after the
 configured activity timeout. The default timeout is 120 seconds.

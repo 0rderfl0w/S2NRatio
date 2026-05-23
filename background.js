@@ -22,6 +22,9 @@ const MIDNIGHT_ALARM = 's2nr-midnight';
 const BADGE_ALARM = 's2nr-ratio-badge';
 const OFF_WEB_KEY = '__off_the_web__';
 const OFF_WEB_MIN_MS = 5000;
+const TRACKING_DEBUG_LOG_KEY = 'trackingDebugLog';
+const TRACKING_DEBUG_LOG_LIMIT = 200;
+let startSessionQueue = Promise.resolve();
 const RETENTION_DAYS = 30;
 const MIN_INACTIVITY_SECONDS = 30;
 const MAX_INACTIVITY_SECONDS = 900;
@@ -40,7 +43,8 @@ const ENGAGEMENT_ACTIVITY_SOURCES = new Set([
   // address-bar navigations, and link-driven page changes can sit at "Awaiting
   // input" and drop real reading time until the next scroll/click.
   'activation',
-  'navigation'
+  'navigation',
+  'media-playback'
 ]);
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -56,6 +60,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       switch (type) {
         case 'GET_DAILY_DATA':
           sendResponse({ success: true, data: await getDailyDataResponse() });
+          break;
+
+        case 'GET_TRACKING_DEBUG_LOG':
+          sendResponse({ success: true, data: await getTrackingDebugLog() });
+          break;
+
+        case 'CLEAR_TRACKING_DEBUG_LOG':
+          await clearTrackingDebugLog();
+          sendResponse({ success: true });
           break;
 
         case 'UPDATE_CLASSIFICATION':
@@ -140,6 +153,63 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   return true;
 });
+
+function compactDebugValue(value) {
+  if (value === undefined || value === null) return value;
+  if (typeof value === 'number' || typeof value === 'string' || typeof value === 'boolean') return value;
+  if (Array.isArray(value)) return value.slice(0, 20).map(compactDebugValue);
+  if (typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value)
+        .filter(([, item]) => item !== undefined)
+        .slice(0, 20)
+        .map(([key, item]) => [key, compactDebugValue(item)])
+    );
+  }
+  return String(value);
+}
+
+async function logTrackingEvent(event, details = {}) {
+  try {
+    const result = await chrome.storage.session.get([TRACKING_DEBUG_LOG_KEY]);
+    const events = Array.isArray(result[TRACKING_DEBUG_LOG_KEY])
+      ? result[TRACKING_DEBUG_LOG_KEY]
+      : [];
+    events.push({
+      at: new Date().toISOString(),
+      event,
+      ...compactDebugValue(details)
+    });
+    await chrome.storage.session.set({
+      [TRACKING_DEBUG_LOG_KEY]: events.slice(-TRACKING_DEBUG_LOG_LIMIT)
+    });
+  } catch (e) {
+    // Debug logging must never affect tracking.
+  }
+}
+
+async function getTrackingDebugLog() {
+  const [session, settings] = await Promise.all([
+    chrome.storage.session.get([TRACKING_DEBUG_LOG_KEY, 'currentSession', 'tabActivity', 'offWebStart']),
+    getSettings()
+  ]);
+
+  return {
+    events: Array.isArray(session[TRACKING_DEBUG_LOG_KEY]) ? session[TRACKING_DEBUG_LOG_KEY] : [],
+    currentSession: session.currentSession || null,
+    tabActivity: session.tabActivity || {},
+    offWebStart: session.offWebStart || null,
+    settings: {
+      requireActivityToTrack: settings.requireActivityToTrack !== false,
+      inactivityThresholdSeconds: getInactivityThresholdSeconds(settings),
+      trackingPaused: !!settings.trackingPaused
+    }
+  };
+}
+
+async function clearTrackingDebugLog() {
+  await chrome.storage.session.remove(TRACKING_DEBUG_LOG_KEY);
+}
 
 async function getDailyDataResponse() {
   const settings = await getSettings();
@@ -725,7 +795,14 @@ async function handleActivityPing(payload = {}, sender = {}) {
   return { tracked: true, domain };
 }
 
-async function startSessionForTab(tab, { markActivity = false, markActivitySource = 'activation' } = {}) {
+async function startSessionForTab(tab, options = {}) {
+  const run = () => startSessionForTabInternal(tab, options);
+  const task = startSessionQueue.then(run, run);
+  startSessionQueue = task.catch(() => {});
+  return task;
+}
+
+async function startSessionForTabInternal(tab, { markActivity = false, markActivitySource = 'activation' } = {}) {
   const settings = await getSettings();
   if (settings.trackingPaused) {
     await clearCurrentSession();
@@ -740,6 +817,7 @@ async function startSessionForTab(tab, { markActivity = false, markActivitySourc
   }
 
   if (!(await isTrackableTab(tab))) {
+    await logTrackingEvent('session_not_trackable', { tabId: tab?.id, source: markActivitySource });
     const current = await getCurrentSession();
     if (current) {
       await clearCurrentSession();
@@ -762,16 +840,39 @@ async function startSessionForTab(tab, { markActivity = false, markActivitySourc
   }
 
   const engagement = await getTabEngagementState(tab, settings);
-  if (!engagement.engaged) return;
+  if (!engagement.engaged) {
+    await logTrackingEvent('session_not_started', {
+      tabId: tab.id,
+      domain,
+      reason: engagement.reason,
+      source: markActivitySource,
+      lastActivityAt: engagement.lastActivityAt || null,
+      thresholdSeconds: engagement.thresholdSeconds
+    });
+    return;
+  }
 
   await finishOffWebSession();
 
-  await setCurrentSession({
+  const latestCurrent = await getCurrentSession();
+  if (latestCurrent?.tabId === tab.id && latestCurrent.domain === domain) return;
+
+  const nextSession = {
     tabId: tab.id,
     domain,
     startTime: Date.now(),
     classification: await classifyCurrent(domain),
     lastActivityAt: engagement.lastActivityAt || Date.now()
+  };
+
+  await setCurrentSession(nextSession);
+  await logTrackingEvent('session_start', {
+    tabId: nextSession.tabId,
+    domain: nextSession.domain,
+    classification: nextSession.classification,
+    source: markActivitySource,
+    lastActivityAt: nextSession.lastActivityAt,
+    thresholdSeconds: engagement.thresholdSeconds
   });
 
   await startHeartbeat();
@@ -787,6 +888,14 @@ async function enforceCurrentSessionActivity(settings = null, { idleStateOverrid
   const engagement = await getSessionEngagementState(current, resolvedSettings, { idleStateOverride });
   if (engagement.engaged) return engagement;
 
+  await logTrackingEvent('session_stop', {
+    tabId: current.tabId,
+    domain: current.domain,
+    reason: engagement.reason,
+    endTime: engagement.endTime || null,
+    lastActivityAt: engagement.lastActivityAt || null,
+    thresholdSeconds: engagement.thresholdSeconds
+  });
   await clearCurrentSession();
   await stopHeartbeat();
   await endSession(current, { endTime: engagement.endTime, endTimeIsBounded: true });
@@ -819,6 +928,16 @@ async function getSessionEngagementState(session, settings, { idleStateOverride 
   const now = Date.now();
 
   if (idleState !== 'active') {
+    if (lastActivityAt && now - lastActivityAt <= thresholdMs) {
+      return {
+        engaged: true,
+        reason: 'recent_activity_while_idle',
+        idleState,
+        lastActivityAt,
+        thresholdSeconds
+      };
+    }
+
     const idleLastActivityAt = settings.requireActivityToTrack ? lastActivityAt : null;
     return {
       engaged: false,
@@ -871,8 +990,13 @@ async function getTabEngagementState(tab, settings) {
   const idleState = await queryIdleState(thresholdSeconds);
   const activity = await getStoredTabActivity(tab.id, domain);
   const lastActivityAt = activity?.lastActivityAt || null;
+  const now = Date.now();
 
   if (idleState !== 'active') {
+    if (lastActivityAt && now - lastActivityAt <= thresholdMs) {
+      return { engaged: true, reason: 'recent_activity_while_idle', idleState, lastActivityAt, thresholdSeconds };
+    }
+
     return { engaged: false, reason: idleState, idleState, lastActivityAt, thresholdSeconds };
   }
 
@@ -929,6 +1053,13 @@ async function recordTabActivity(tab, source = 'input') {
 
   tabActivity[key] = activity;
   await chrome.storage.session.set({ tabActivity });
+  await logTrackingEvent('activity', {
+    tabId: tab.id,
+    domain,
+    source,
+    isEngagement: isEngagementActivitySource(source),
+    lastActivityAt: activity.lastActivityAt || null
+  });
   return activity;
 }
 
@@ -1028,8 +1159,22 @@ async function endSession(session, { endTime = Date.now(), endTimeIsBounded = fa
     ? Math.max(session.startTime, endTime)
     : await getSessionEndTime(session, { settings, endTime });
   const duration = Math.max(0, boundedEndTime - session.startTime);
-  if (duration < 1000) return;
+  if (duration < 1000) {
+    await logTrackingEvent('session_ignored_short', {
+      tabId: session.tabId || null,
+      domain: session.domain || OFF_WEB_KEY,
+      durationMs: duration
+    });
+    return;
+  }
 
+  await logTrackingEvent('session_end', {
+    tabId: session.tabId || null,
+    domain: session.domain || OFF_WEB_KEY,
+    classification: session.classification || 'signal',
+    durationMs: duration,
+    boundedEndTime
+  });
   await addDurationAcrossDateKeys(
     session.domain || OFF_WEB_KEY,
     session.classification || 'signal',
@@ -1107,6 +1252,14 @@ async function addDurationToDate(dateKey, domain, classification, durationMs) {
     daily.totalNoiseMs = (daily.totalNoiseMs || 0) + durationMs;
   }
 
+  await logTrackingEvent('duration_added', {
+    dateKey,
+    domain: key,
+    classification,
+    durationMs,
+    totalSignalMs: daily.totalSignalMs || 0,
+    totalNoiseMs: daily.totalNoiseMs || 0
+  });
   await updateDailyDataAndMaybeShowGoalEffect(dateKey, daily);
 }
 
@@ -1198,6 +1351,7 @@ async function resetToday() {
   await chrome.storage.local.set({ dailyData });
   await clearTodaySiteRules(todayKey);
   await clearGoalEffectStateForDate(todayKey);
+  await logTrackingEvent('reset_today', { dateKey: todayKey });
   await updateActionBadge();
 }
 
@@ -1206,6 +1360,7 @@ async function clearTrackingHistory() {
   await stopHeartbeat();
   await chrome.storage.session.remove(['tabActivity', 'offWebStart']);
   await chrome.storage.local.remove(['dailyData', 'goalEffectState']);
+  await logTrackingEvent('clear_tracking_history', {});
   await updateActionBadge();
 }
 

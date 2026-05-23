@@ -2,6 +2,15 @@
 
 All notable local changes to S2NRatio are documented here.
 
+## 2026-05-23 - Tracking Debug Log
+
+### Changed
+
+- Bumped the extension package version to `0.1.10`.
+- Added a temporary local tracking debug log for recent activity pings, session starts/stops, ignored short sessions, and persisted duration writes.
+- Added Settings buttons to export or clear the tracking debug log as JSON, making tab-switch and minute-counting issues easier to inspect without DevTools.
+- Count active media playback as engagement so watching video/audio can continue tracking even without fresh mouse or keyboard input.
+
 ## 2026-05-23 - Navigation Tracking Regression Fix
 
 ### Changed
