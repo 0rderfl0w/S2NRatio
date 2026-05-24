@@ -1,7 +1,7 @@
 # S2NRatio - Chrome Extension v0.1 Spec
 
 ## Version
-v0.1 - Initial MVP Architecture
+v0.1 - Initial MVP Architecture, updated through extension version 0.1.10
 
 ## Goals for v0.1
 - Accurate tracking of time spent on the currently active (visible) browser tab only.
@@ -26,12 +26,10 @@ v0.1 - Initial MVP Architecture
 {
   "permissions": [
     "tabs",
-    "activeTab",
     "storage",
-    "scripting",
-    "alarms"
+    "alarms",
+    "idle"
   ],
-  "host_permissions": ["<all_urls>"],
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
@@ -42,19 +40,18 @@ v0.1 - Initial MVP Architecture
 }
 ```
 - `tabs`: To query active tab and listen to tab events (background monitoring).
-- `activeTab`: Temporary access for the current tab when user interacts with popup.
-- `storage`: For persisting daily data and siteRules.
-- `scripting`: For dynamic injection if needed (kept for flexibility but content_scripts above handles most cases).
-- `alarms`: For heartbeat to keep service worker alive during active sessions and for midnight reset.
-- `host_permissions`: ["<all_urls>"] — required for content script to run on all pages and for visibility tracking. Note: This is a broad permission; Chrome will show warning. For v0.1 we accept it for full coverage; post-v0.1 we will explore narrowing via dynamic injection with activeTab only.
-- Content scripts declared statically for reliable injection on every page load.
+- `storage`: For persisting settings, daily data, siteRules, and temporary session/debug state.
+- `alarms`: For heartbeat to keep service worker state fresh during active sessions, badge refresh, and midnight reset.
+- `idle`: To avoid counting abandoned tabs while the computer is idle or locked. Recent tab activity and active media playback can keep a visible tab engaged inside the configured activity timeout.
+- Static `<all_urls>` content script match: required for the local classifier prompt, page visibility/activity listeners, and media playback detection on visited pages. The manifest intentionally does not use separate `host_permissions`, `activeTab`, or `scripting` permissions in the current static-content-script design.
+- Content scripts declared statically for reliable injection on every page load. Current manifest does not set `all_frames`; media detection is expected to work for normal top-level YouTube/Facebook/social video pages, but embedded iframe-only players may require `all_frames: true` in a future release.
 
 ### Service Worker Lifecycle Management (NEW - Critical for Accuracy)
 Manifest V3 service workers are terminated by Chrome after ~30 seconds of inactivity. To prevent loss of current session timing:
 
 - Persist `currentSession` to `chrome.storage.session` (ephemeral, survives worker restarts) on every state change.
 - On service worker wake (e.g., on tab event or alarm), read persisted `currentSession`, calculate elapsed time since `startTime`, close the old session, and start new if applicable.
-- Use `chrome.alarms` with a 25-second interval as a heartbeat during active sessions to minimize termination.
+- Use `chrome.alarms` with a 30-second heartbeat during active sessions to keep session state fresh and run bounded activity checks.
 - Use `Date.now()` exclusively for all timestamps (wall-clock, survives restarts). Never use `performance.now()` in the background worker.
 - Add explicit recovery logic in background startup: if `currentSession` exists and startTime is recent (<5min), calculate and persist duration, then clear or update.
 
@@ -102,6 +99,9 @@ This ensures no time is lost when the worker is killed mid-session.
 - Timer only runs while:
   - Browser window is focused.
   - Tab is active and `visibilityState === 'visible'`.
+  - The tab has recent engagement if `requireActivityToTrack` is enabled. Engagement sources are page input events (`pointerdown`, `keydown`, `scroll`, `wheel`, `touchstart`, `mousemove`), browser-level activation/navigation, and active media playback.
+- The default inactivity timeout is 120 seconds. Before v0.1.10, passive video watching could stop at roughly 2 minutes because YouTube/Reels/Facebook video playback did not refresh tab activity. Current behavior treats visible playing `<video>`/`<audio>` elements as `media-playback` engagement, so video/audio should continue counting while it is actively playing.
+- Media playback detection runs in the top-level content script. Normal YouTube/Facebook/social video pages should be covered; iframe-only embedded players remain a known caveat unless `all_frames: true` is added later.
 - Use `Date.now()` exclusively for timestamps.
 - Sessions are short-lived: created on tab activation/visibility change, ended on tab switch or visibility hidden.
 - Debounce: Tab switches within 1 second are debounced. Timer does not start a new session until the active tab has been stable for 1 second. Very short glances (<1s) are attributed to the previous session.
@@ -109,8 +109,10 @@ This ensures no time is lost when the worker is killed mid-session.
 - "Off the web" tracking: For v0.1, "off the web" (Signal when browser not active) is best-effort using `chrome.windows.onFocusChanged` returning `WINDOW_ID_NONE`. Gaps between sessions >5 seconds may be attributed to "off the web". This is acknowledged as approximate; false positives possible. Future versions may improve detection.
 
 #### 4. Data Storage Model
-Use `chrome.storage.local` with the following structure:
-- `currentSession`: Stored in `chrome.storage.session` for ephemerality: { tabId, domain, startTime, classification }
+Use `chrome.storage.local` for durable data and `chrome.storage.session` for ephemeral runtime state with the following structure:
+- `currentSession`: Stored in `chrome.storage.session` for ephemerality: { tabId, domain, startTime, classification, lastActivityAt }
+- `tabActivity`: Stored in `chrome.storage.session`, keyed by tab id, tracking normalized domain plus recent activity timestamps and source.
+- `trackingDebugLog`: Temporary `chrome.storage.session` ring buffer of recent tracking events for troubleshooting. It records event names, normalized domains, timestamps, tab ids, reasons, and durations, but not full URLs or page content.
 - `dailyData`: Map keyed by date string (YYYY-MM-DD). Each day resets at midnight local time or configurable `dayStartHour`.
 - `siteRules`: Persistent user overrides.
 - `todaySiteRules`: Date-scoped user overrides for "Remember today".
@@ -128,7 +130,7 @@ Helper functions:
 
 **Error handling**: Every `chrome.storage.local.set()` must check `chrome.runtime.lastError`. If quota exceeded, prune oldest day and retry. Wrap in try/catch. Max retention 30 days to prevent unbounded growth.
 
-**Privacy**: Only domain stored, never full URL, paths, or query params (which could contain tokens). Plaintext storage noted as known limitation for v0.1; consider encryption in future.
+**Privacy**: Only normalized domains and timing/activity metadata are stored, never full URLs, paths, query params (which could contain tokens), page titles, page contents, keystroke contents, or media titles. Plaintext Chrome storage is a known limitation for v0.1; consider encryption in future.
 
 #### 5. Popup Dashboard (popup.html + popup.js)
 - Clean, minimal design (plain CSS for lightness — no Tailwind in v0.1 to meet <200KB and no-dependency constraints).
@@ -162,6 +164,8 @@ Messages between popup/content/background use strict schema and sender validatio
 - Retry: If `chrome.runtime.sendMessage` fails (worker asleep), retry once after 500ms.
 - Message types:
   - `GET_DAILY_DATA`: payload none; returns daily aggregates + currentSession.
+  - `GET_TRACKING_DEBUG_LOG`: payload none; returns temporary session debug events and runtime tracking state for troubleshooting.
+  - `CLEAR_TRACKING_DEBUG_LOG`: payload none; clears the temporary debug event ring buffer.
   - `UPDATE_CLASSIFICATION`: payload { domain, newClassification, remember: boolean }
   - `GET_CURRENT_SESSION`
   - `CLASSIFY_SITE`: payload { url } — URL sanitized to domain only.

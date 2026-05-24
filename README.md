@@ -46,7 +46,11 @@ touch, tab activation/navigation, or active media-playback activity before time
 counts.
 
 If the tab goes stale, the extension stops counting that website after the
-configured activity timeout. The default timeout is 120 seconds.
+configured activity timeout. The default timeout is 120 seconds. Active
+video/audio playback is intentionally treated as engagement; otherwise watching a
+YouTube video, reel, or Facebook/social video without touching the keyboard or
+mouse could stall around the two-minute timeout even though the media is still
+playing.
 
 ### Signal and Noise Classification
 
@@ -142,6 +146,7 @@ The Settings page includes:
 - status bar tier editor
 - manual site rules
 - CSV export
+- temporary tracking debug log export and clear controls
 - reset today's data
 - local storage summary and tracking-history trash action
 - `Support Open Source Devs` section with a Buy Me a Coffee link
@@ -154,7 +159,7 @@ Signal to Noise Ratio uses a small set of Chrome extension permissions:
 - `storage`: store settings, rules, daily totals, and session state locally
 - `alarms`: run periodic tracking checkpoints and day rollover cleanup
 - `idle`: avoid counting website time while the computer is idle or locked
-- `<all_urls>` content script match: run the local prompt and activity listener on visited pages
+- `<all_urls>` content script match: run the local prompt and activity/media listener on visited pages
 
 ## Privacy
 
@@ -165,6 +170,7 @@ Signal to Noise Ratio is local-first.
 - The extension stores normalized domains, not full URLs, paths, query strings,
   page titles, or page contents.
 - CSV export is user-triggered from Settings.
+- Debug-log export is user-triggered from Settings and contains local troubleshooting metadata only.
 
 See [PRIVACY.md](PRIVACY.md) for the full privacy policy.
 
@@ -178,12 +184,14 @@ Main storage keys:
 - `dailyData`: daily domain activity, totals, and split Signal/Noise durations
 - `goalEffectState`: per-date/per-goal state for crossing effects
 - `currentSession`: active tracking session in `chrome.storage.session`
+- `tabActivity`: recent per-tab activity source/timestamps in `chrome.storage.session`
+- `trackingDebugLog`: temporary recent tracking events in `chrome.storage.session`, exportable from Settings for troubleshooting
 
 ## Project Files
 
 - `manifest.json`: Manifest V3 extension definition
 - `background.js`: service worker, session tracking, classification updates, edits, splits, and alarms
-- `content.js`: quick classifier prompt and user-activity pings
+- `content.js`: quick classifier prompt, user-activity pings, and media-playback engagement detection
 - `popup/`: extension popup dashboard
 - `options/`: settings page, weekly-average controls, rules editor, storage summary, reset, and CSV export
 - `utils/`: classification, storage, and time helpers
@@ -210,6 +218,12 @@ testing real pages.
 
 - Existing local Chrome storage can contain stale data from earlier builds. Use
   `Reset Today's Data` in Settings for cleaner manual testing.
+- Media playback engagement is detected from the top-level page content script.
+  Normal YouTube/Facebook/social video pages should count while playing; embedded
+  iframe-only video players may need a future `all_frames: true` manifest change.
+- If minute counting feels wrong, export `Tracking Debug Log` from Settings before
+  clearing data; it shows recent activity sources, session starts/stops, and
+  persisted duration writes.
 - Icons use the simple Signal/Noise mark in `icons/`.
 - Chrome Web Store packages are generated under `dist/` when needed.
 

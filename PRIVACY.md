@@ -11,7 +11,8 @@ Signal to Noise Ratio stores extension data locally in Chrome storage on your de
 - website domains, such as `example.com`
 - Signal or Noise classifications for domains
 - daily time totals by domain
-- recent activity event types and timestamps, such as click, scroll, keyboard, touch, mouse movement, or visibility activity, used only to decide whether the active tab should keep counting
+- recent activity event types and timestamps, such as click, scroll, keyboard, touch, mouse movement, tab activation/navigation, media playback, or visibility activity, used only to decide whether the active tab should keep counting
+- temporary troubleshooting events in the local debug log, such as session starts/stops, duration writes, normalized domains, tab IDs, reasons, and timestamps
 - extension settings, such as daily goal, prompt behavior, and status tiers
 
 Signal to Noise Ratio does not store full URLs, page paths, query strings, page titles, page contents, form entries, keystroke contents, mouse coordinates, passwords, or payment details.
@@ -24,13 +25,15 @@ The extension uses local data to:
 - show your website time breakdown
 - remember how you classify websites
 - stop counting stale tabs after inactivity
+- keep visible playing video/audio counting as active engagement
 - export your own CSV data when you request it
+- export your own local debug log when you request it for troubleshooting
 
 ## Data Sharing
 
 Signal to Noise Ratio does not sell, rent, transfer, or share your browsing data.
 
-Signal to Noise Ratio does not send tracking data to an external server. CSV export is user-triggered and stays under your control.
+Signal to Noise Ratio does not send tracking data to an external server. CSV and debug-log exports are user-triggered and stay under your control.
 
 ## Limited Use
 
@@ -48,7 +51,7 @@ Signal to Noise Ratio requests:
 - `storage` to save local settings, rules, and daily totals
 - `alarms` to run periodic tracking checkpoints
 - `idle` to stop website tracking when your computer is idle or locked
-- `<all_urls>` content script access to run the local classifier prompt and activity listener on visited pages
+- `<all_urls>` content script access to run the local classifier prompt and activity/media listener on visited pages
 
 These permissions are used only for the extension's single purpose: helping you track active browser time as Signal or Noise.
 

@@ -9,7 +9,7 @@ Signal to Noise Ratio is a lightweight Chrome extension that helps users underst
   - Default Signal sites: email providers (Gmail, Outlook), productivity tools (Notion, Linear, Zoom, calendars), work-related domains.
   - Default Noise sites: social networks (X/Twitter, Facebook, Instagram, YouTube, Reddit), entertainment (Netflix, Twitch).
 - **Off-Browser Time as Signal**: When the browser is not the active application or there are no active tabs, time is automatically attributed to "Signal" (e.g., "off the web" or deep work outside the browser).
-- **Idle Protection**: When Chrome reports the machine as idle or locked, active website tracking stops instead of continuing to count the last open tab.
+- **Idle Protection**: When Chrome reports the machine as idle or locked, active website tracking stops instead of continuing to count the last open tab. Recent user engagement and visible active media playback keep the active tab engaged inside the configured timeout.
 - **Quick Override Popup**: By default, when visiting any website without a saved rule, a small, non-intrusive popup appears offering two buttons:
   - "Signal" (with default for known productive contexts like email, Zoom, or when user is on X for work)
   - "Noise" (default for traditional social networks)
@@ -38,6 +38,7 @@ Signal to Noise Ratio is a lightweight Chrome extension that helps users underst
 - Customizable status bar name and tier goals in Settings.
 - Configurable goal-crossing effects in Settings.
 - Privacy-first: All data stays local in Chrome storage; no external servers in v0.1.
+- Debugging: If tracking feels wrong, use Settings -> Data Management -> Export Tracking Debug Log before clearing data. The temporary log is local/session-scoped and shows recent activity sources, session starts/stops, and duration writes.
 
 ## Target Users
 Builders, founders, solopreneurs, and knowledge workers who want honest data on where their attention goes without complex setup or SaaS subscriptions.

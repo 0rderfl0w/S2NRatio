@@ -10,6 +10,7 @@ All notable local changes to S2NRatio are documented here.
 - Added a temporary local tracking debug log for recent activity pings, session starts/stops, ignored short sessions, and persisted duration writes.
 - Added Settings buttons to export or clear the tracking debug log as JSON, making tab-switch and minute-counting issues easier to inspect without DevTools.
 - Count active media playback as engagement so watching video/audio can continue tracking even without fresh mouse or keyboard input.
+- Updated README, spec, privacy policy, and agent notes to document the two-minute passive-video timeout bug, the media-playback fix, the local debug-log workflow, and the iframe-player caveat.
 
 ## 2026-05-23 - Navigation Tracking Regression Fix
 
