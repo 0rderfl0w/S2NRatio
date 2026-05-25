@@ -19,6 +19,25 @@ async function sendMessage(type, payload) {
   return chrome.runtime.sendMessage({ type, payload });
 }
 
+function getClassifiableDomainFromUrl(url) {
+  try {
+    const parsed = new URL(url || "");
+    if (!["http:", "https:"].includes(parsed.protocol)) return "";
+
+    const hostname = parsed.hostname.toLowerCase().replace(/^www\./, "").replace(/\.$/, "");
+    const labels = hostname.split(".");
+    const valid = labels.length >= 2 && labels.every((label) => (
+      label.length > 0 &&
+      label.length <= 63 &&
+      /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(label)
+    ));
+
+    return valid ? hostname : "";
+  } catch (err) {
+    return "";
+  }
+}
+
 async function loadData() {
   const ratioEl = document.getElementById('ratio');
   const domainEl = document.getElementById('current-domain');
@@ -57,12 +76,11 @@ async function loadData() {
 
     if (!domain) {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (tab?.url) {
-        try {
-          domain = new URL(tab.url).hostname.toLowerCase().replace(/^www\./, '');
-          const siteResponse = await sendMessage('CLASSIFY_SITE', { url: tab.url });
-          liveClassification = siteResponse?.data?.classification || null;
-        } catch {}
+      const tabDomain = getClassifiableDomainFromUrl(tab?.url);
+      if (tabDomain) {
+        domain = tabDomain;
+        const siteResponse = await sendMessage('CLASSIFY_SITE', { url: tab.url });
+        liveClassification = siteResponse?.data?.classification || null;
       }
     }
 
@@ -534,13 +552,11 @@ function showFeedback(message) {
 async function markCurrentSite(type) {
   if (!currentDomain) {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (tab?.url) {
-      currentDomain = new URL(tab.url).hostname.toLowerCase().replace(/^www\./, '');
-    }
+    currentDomain = getClassifiableDomainFromUrl(tab?.url);
   }
 
   if (!currentDomain) {
-    alert('Could not detect current website.');
+    alert('Open a regular website tab before changing the current site classification. Extension and browser internal pages cannot be classified from this button.');
     return;
   }
 

@@ -2,6 +2,14 @@
 
 All notable local changes to S2NRatio are documented here.
 
+## 2026-05-25 - Internal Page Classification Guard
+
+### Changed
+
+- Bumped the extension package version to `0.1.11`.
+- Fixed the popup current-site classification buttons so extension, browser, and other non-website pages are not treated as classifiable website domains.
+- Added a clearer message when the current tab is not a regular `http` or `https` website.
+
 ## 2026-05-23 - Tracking Debug Log
 
 ### Changed
